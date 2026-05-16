@@ -1,0 +1,291 @@
+# ---------------------------------------------------------------------------
+# ML Underground — Docker Compose
+#
+# Profiles:
+#   de       - Data engineering stack: Kafka, MySQL, MinIO, Airflow
+#   ml       - ML stack: Elasticsearch, Kibana, Qdrant
+#   monitor  - Monitoring stack: Grafana, Prometheus
+#   api      - FastAPI service
+#   all      - Full stack
+#
+# Usage:
+#   docker compose --profile de up -d
+#   docker compose --profile ml up -d
+#   docker compose --profile de --profile monitor up -d
+#   docker compose --profile all up -d
+# ---------------------------------------------------------------------------
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.8.0
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://airflow:airflow@mysql:3306/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+  volumes:
+    - ./de/airflow/dags:/opt/airflow/dags
+    - airflow-logs:/opt/airflow/logs
+  depends_on:
+    mysql:
+      condition: service_healthy
+  networks:
+    - ml-underground
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Profile: de — Kafka + Zookeeper
+  # ---------------------------------------------------------------------------
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    profiles: [de, all]
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - ml-underground
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    profiles: [de, all]
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - ml-underground
+
+  # Web UI for inspecting Kafka topics and messages
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    profiles: [de, all]
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      - kafka
+    networks:
+      - ml-underground
+
+  # ---------------------------------------------------------------------------
+  # Profile: de — MySQL (staging / Bronze layer + Airflow metadata)
+  # ---------------------------------------------------------------------------
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    profiles: [de, all]
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: airflow
+      MYSQL_PASSWORD: airflow
+      MYSQL_DATABASE: airflow
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+    networks:
+      - ml-underground
+
+  # ---------------------------------------------------------------------------
+  # Profile: de — MinIO (local S3 emulator for raw / Iceberg layer)
+  # ---------------------------------------------------------------------------
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    profiles: [de, all]
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # Web console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - ml-underground
+
+  # ---------------------------------------------------------------------------
+  # Profile: de — Airflow (orchestration)
+  # ---------------------------------------------------------------------------
+
+  # Initializes the Airflow database and creates the admin user on first run
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init
+    profiles: [de, all]
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - >
+        airflow db init &&
+        airflow users create
+        --username admin
+        --password admin
+        --firstname Admin
+        --lastname Admin
+        --role Admin
+        --email admin@example.com
+    restart: on-failure
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver
+    profiles: [de, all]
+    ports:
+      - "8081:8080"
+    command: webserver
+    restart: always
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    profiles: [de, all]
+    command: scheduler
+    restart: always
+
+  # ---------------------------------------------------------------------------
+  # Profile: ml — Elasticsearch (full-text search over repositories)
+  # ---------------------------------------------------------------------------
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    profiles: [ml, all]
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    networks:
+      - ml-underground
+
+  # Web UI for Elasticsearch
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    profiles: [ml, all]
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - ml-underground
+
+  # ---------------------------------------------------------------------------
+  # Profile: ml — Qdrant (vector database for embeddings / RAG)
+  # ---------------------------------------------------------------------------
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    profiles: [ml, all]
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - ml-underground
+
+  # ---------------------------------------------------------------------------
+  # Profile: monitor — Prometheus + Grafana
+  # ---------------------------------------------------------------------------
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    profiles: [monitor, all]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks:
+      - ml-underground
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    profiles: [monitor, all]
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - ml-underground
+
+  # ---------------------------------------------------------------------------
+  # Profile: api — FastAPI (serves ML and DE data to the frontend)
+  # ---------------------------------------------------------------------------
+
+  api:
+    build:
+      context: ./de
+      dockerfile: Dockerfile.api
+    container_name: fastapi
+    profiles: [api, all]
+    ports:
+      - "8000:8000"
+    environment:
+      MYSQL_HOST: mysql
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ELASTICSEARCH_HOST: elasticsearch:9200
+      QDRANT_HOST: qdrant
+    depends_on:
+      - mysql
+      - kafka
+      - elasticsearch
+      - qdrant
+    networks:
+      - ml-underground
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+
+networks:
+  ml-underground:
+    driver: bridge
+
+# ---------------------------------------------------------------------------
+# Volumes
+# ---------------------------------------------------------------------------
+
+volumes:
+  mysql-data:
+  minio-data:
+  es-data:
+  qdrant-data:
+  airflow-logs:
+  prometheus-data:
+  grafana-data:
