@@ -16,16 +16,36 @@
 # ---------------------------------------------------------------------------
 
 x-airflow-common: &airflow-common
-  image: apache/airflow:2.8.0
+  build:
+    context: ./de/airflow
+    dockerfile: Dockerfile
   environment:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+mysqlconnector://airflow:airflow@mysql:3306/airflow
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://airflow:airflow@mysql:3306/airflow
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+    # Shared across all Airflow components so the webserver can fetch task
+    # logs from the scheduler/worker without a 403.
+    AIRFLOW__WEBSERVER__SECRET_KEY: 'ml-underground-secret-key'
+    # Pipeline config — pulled from the root .env file (do NOT use env_file:
+    # here, .env points KAFKA/MYSQL/MINIO at localhost which breaks containers)
+    GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    MAX_EVENTS: ${MAX_EVENTS:-0}
+    HF_BATCH_SIZE: ${HF_BATCH_SIZE:-100}
+    SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT:-}
+    SNOWFLAKE_USER: ${SNOWFLAKE_USER:-}
+    SNOWFLAKE_PASSWORD: ${SNOWFLAKE_PASSWORD:-}
+    SNOWFLAKE_DATABASE: ${SNOWFLAKE_DATABASE:-ML_UNDERGROUND}
+    SNOWFLAKE_WAREHOUSE: ${SNOWFLAKE_WAREHOUSE:-ML_UNDERGROUND_WH}
+    SNOWFLAKE_SCHEMA: ${SNOWFLAKE_SCHEMA:-PUBLIC}
+    SNOWFLAKE_ROLE: ${SNOWFLAKE_ROLE:-ACCOUNTADMIN}
   volumes:
     - ./de/airflow/dags:/opt/airflow/dags
+    - ./de/ingestion:/opt/airflow/ingestion
+    - ./de/dbt/ml_underground:/opt/airflow/dbt
+    - ./de/quality:/opt/airflow/quality
     - airflow-logs:/opt/airflow/logs
   depends_on:
     mysql:
@@ -99,6 +119,7 @@ services:
       MYSQL_DATABASE: airflow
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./de/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
@@ -166,46 +187,14 @@ services:
     restart: always
 
   # ---------------------------------------------------------------------------
-  # Profile: ml — Elasticsearch (full-text search over repositories)
-  # ---------------------------------------------------------------------------
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-    container_name: elasticsearch
-    profiles: [ml, all]
-    ports:
-      - "9200:9200"
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
-    volumes:
-      - es-data:/usr/share/elasticsearch/data
-    networks:
-      - ml-underground
-
-  # Web UI for Elasticsearch
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.11.0
-    container_name: kibana
-    profiles: [ml, all]
-    ports:
-      - "5601:5601"
-    environment:
-      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
-    depends_on:
-      - elasticsearch
-    networks:
-      - ml-underground
-
-  # ---------------------------------------------------------------------------
   # Profile: ml — Qdrant (vector database for embeddings / RAG)
   # ---------------------------------------------------------------------------
 
   qdrant:
     image: qdrant/qdrant:latest
     container_name: qdrant
-    profiles: [ml, all]
+    # in the de profile too: the embed_repos DAG task writes to Qdrant
+    profiles: [de, ml, all]
     ports:
       - "6333:6333"
     volumes:
@@ -239,33 +228,24 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
       - prometheus
     networks:
       - ml-underground
 
-  # ---------------------------------------------------------------------------
-  # Profile: api — FastAPI (serves ML and DE data to the frontend)
-  # ---------------------------------------------------------------------------
-
-  api:
+  # Custom exporter — pipeline metrics (MySQL row counts, Qdrant, DAG health)
+  pipeline-exporter:
     build:
-      context: ./de
-      dockerfile: Dockerfile.api
-    container_name: fastapi
-    profiles: [api, all]
-    ports:
-      - "8000:8000"
+      context: ./infra/exporter
+    container_name: pipeline-exporter
+    profiles: [monitor, all]
     environment:
       MYSQL_HOST: mysql
-      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
-      ELASTICSEARCH_HOST: elasticsearch:9200
       QDRANT_HOST: qdrant
-    depends_on:
-      - mysql
-      - kafka
-      - elasticsearch
-      - qdrant
+    ports:
+      - "9101:9101"
     networks:
       - ml-underground
 
@@ -284,7 +264,6 @@ networks:
 volumes:
   mysql-data:
   minio-data:
-  es-data:
   qdrant-data:
   airflow-logs:
   prometheus-data:

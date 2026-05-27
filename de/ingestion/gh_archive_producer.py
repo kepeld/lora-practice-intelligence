@@ -9,54 +9,20 @@ import gzip
 import json
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import requests
 from kafka import KafkaProducer
 from kafka.errors import NoBrokersAvailable
+
+from filters import is_ml_relevant
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
-KAFKA_TOPIC_RAW = "github.events.raw"
 KAFKA_TOPIC_ML = "github.events.ml"
-
-# Keywords used to identify ML-relevant repositories
-ML_KEYWORDS = [
-    "machine-learning", "deep-learning", "neural-network",
-    "llm", "large-language-model", "transformer",
-    "lora", "fine-tuning", "finetuning",
-    "rag", "retrieval-augmented",
-    "diffusion", "stable-diffusion",
-    "reinforcement-learning", "rlhf",
-    "computer-vision", "nlp", "natural-language-processing",
-    "pytorch", "tensorflow", "huggingface",
-    "langchain", "llamaindex", "openai",
-    "agents", "ai-agent",
-]
-
-# Keywords that indicate a non-ML repository (crypto, web3, etc.)
-# If any of these are found, the event is excluded regardless of ML keywords
-CRYPTO_BLACKLIST = [
-    "solidity", "uniswap", "defi", "ethereum", "web3",
-    "arbitrage", "blockchain", "nft", "token", "evm",
-    "smart-contract", "metamask", "binance", "coinbase",
-    "crypto", "bitcoin", "hardhat", "truffle", "foundry",
-    "airdrop", "staking", "yield-farming", "dex", "amm",
-]
-
-# Only these event types are forwarded to the raw topic
-RELEVANT_EVENT_TYPES = [
-    "WatchEvent",        # star
-    "ForkEvent",         # fork
-    "PushEvent",         # commit push
-    "PullRequestEvent",  # pull request
-    "IssuesEvent",       # issue opened/closed
-    "ReleaseEvent",      # new release
-    "CreateEvent",       # repository or branch created
-]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -92,37 +58,11 @@ def create_producer(retries: int = 5) -> KafkaProducer:
 # Filtering
 # ---------------------------------------------------------------------------
 
-def is_ml_relevant(event: dict) -> bool:
-    """
-    Return True if the event is related to an ML/AI repository.
-
-    Two-stage filter:
-      1. Reject if any CRYPTO_BLACKLIST keyword is found (fast exclusion)
-      2. Accept if any ML_KEYWORDS keyword is found
-    """
-    repo_name = event.get("repo", {}).get("name", "").lower()
-    text = repo_name
-
-    if event.get("type") == "PushEvent":
-        commits = event.get("payload", {}).get("commits", [])
-        text += " " + " ".join(c.get("message", "") for c in commits).lower()
-
-    topics = event.get("repo", {}).get("topics", [])
-    text += " " + " ".join(topics).lower()
-
-    # Stage 1: exclude crypto/web3 repos
-    if any(keyword in text for keyword in CRYPTO_BLACKLIST):
-        return False
-
-    # Stage 2: must match at least one ML keyword
-    return any(keyword in text for keyword in ML_KEYWORDS)
-
-
 def enrich_event(event: dict) -> dict:
     """Attach ingestion metadata to an event."""
     return {
         **event,
-        "ingested_at": datetime.utcnow().isoformat(),
+        "ingested_at": datetime.now(timezone.utc).isoformat(),
         "source": "gharchive",
     }
 
@@ -167,14 +107,6 @@ def fetch_and_produce(producer: KafkaProducer, dt: datetime) -> dict:
                     event = json.loads(line.decode("utf-8"))
                     stats["total"] += 1
 
-                    # All relevant event types go to the raw topic
-                    if event.get("type") in RELEVANT_EVENT_TYPES:
-                        producer.send(
-                            KAFKA_TOPIC_RAW,
-                            key=event.get("id"),
-                            value=enrich_event(event),
-                        )
-
                     # ML-filtered events go to the ml topic
                     if is_ml_relevant(event):
                         producer.send(
@@ -213,7 +145,7 @@ def main():
     producer = create_producer()
 
     # Start 2 hours behind current time (GH Archive has ~1h delay)
-    start_dt = datetime.utcnow() - timedelta(hours=2)
+    start_dt = datetime.now(timezone.utc) - timedelta(hours=2)
     start_dt = start_dt.replace(minute=0, second=0, microsecond=0)
 
     logger.info("Starting from %s", start_dt)
@@ -225,7 +157,7 @@ def main():
         current_dt += timedelta(hours=1)
 
         # Caught up to current time — wait for next hour
-        if current_dt >= datetime.utcnow() - timedelta(hours=1):
+        if current_dt >= datetime.now(timezone.utc) - timedelta(hours=1):
             logger.info("Caught up to current time. Waiting 60 minutes.")
             time.sleep(60 * 60)
         else:
