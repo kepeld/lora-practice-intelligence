@@ -9,7 +9,7 @@ Reads ML-relevant GitHub events from Kafka and persists them to:
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import List
 
@@ -112,7 +112,7 @@ def upsert_repo(cursor, event: dict):
     if not repo_id or not repo_name:
         return
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     star_delta = 1 if event.get("type") == "WatchEvent" else 0
     fork_delta = 1 if event.get("type") == "ForkEvent" else 0
 
@@ -278,7 +278,7 @@ def run_consumer():
 
 def _flush_batch(batch: List[dict], mysql_conn, s3_client):
     """Write a batch to both MySQL and MinIO."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Reconnect MySQL if connection dropped
     if not mysql_conn.is_connected():
