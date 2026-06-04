@@ -13,7 +13,7 @@
 -- expectation instead.
 --
 -- ENUM keeps 'llm' as forward compatibility for the future LLM fallback
--- (Dmytryk's prompt-design work, US-3.3) -- this Step 4 produces no LLM rows.
+-- (US-3.3, Issue #7) -- this Step 4 produces no LLM rows.
 
 CREATE TABLE IF NOT EXISTS lora_configs_raw (
     config_id       BIGINT AUTO_INCREMENT PRIMARY KEY,

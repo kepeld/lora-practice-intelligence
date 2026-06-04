@@ -42,10 +42,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
 MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
 MYSQL_PORT = int(os.getenv("MYSQL_PORT", "3306"))
 MYSQL_USER = os.getenv("MYSQL_USER", "root")
@@ -61,7 +57,7 @@ TARGET_COUNT = int(os.getenv("HF_LORA_TARGET_COUNT", "1500"))
 # Override via HF_LORA_MIN_DOWNLOADS.
 MIN_DOWNLOADS = int(os.getenv("HF_LORA_MIN_DOWNLOADS", "100"))
 
-# Per-search cap on models pulled from the Hub (newest/most-downloaded first).
+# Per-search cap on models pulled from the Hub (most-downloaded first).
 SEARCH_LIMIT = int(os.getenv("HF_LORA_SEARCH_LIMIT", "1000"))
 
 # Small delay between model-card fetches to stay polite to the Hub.
@@ -79,10 +75,6 @@ SEARCH_QUERIES = [
     ("search:qlora",   {"search": "qlora"}),
 ]
 
-
-# ---------------------------------------------------------------------------
-# MySQL
-# ---------------------------------------------------------------------------
 
 def get_connection():
     return mysql.connector.connect(
@@ -201,10 +193,6 @@ def upsert_model(conn, model, card_content: str | None) -> None:
     cursor.close()
 
 
-# ---------------------------------------------------------------------------
-# HuggingFace helpers (same parsing as the hourly hf_ingestion task)
-# ---------------------------------------------------------------------------
-
 def extract_base_model(tags) -> str | None:
     """Parse the base model from HF's `base_model:<id>` tags."""
     for tag in tags:
@@ -230,10 +218,6 @@ def load_card(model_id: str) -> str | None:
     except Exception:
         return None
 
-
-# ---------------------------------------------------------------------------
-# Discovery
-# ---------------------------------------------------------------------------
 
 def collect_candidates(api: HfApi, conn) -> int:
     """Run all HF searches, recording every discovered model. Returns new count."""
@@ -262,10 +246,6 @@ def _count_discovered(conn) -> int:
     cursor.close()
     return count
 
-
-# ---------------------------------------------------------------------------
-# Ingestion pass
-# ---------------------------------------------------------------------------
 
 def ingest_pending(api: HfApi, conn) -> tuple[int, int]:
     """
@@ -303,10 +283,6 @@ def ingest_pending(api: HfApi, conn) -> tuple[int, int]:
 
     return written, skipped
 
-
-# ---------------------------------------------------------------------------
-# Reporting
-# ---------------------------------------------------------------------------
 
 def report(conn) -> None:
     cursor = conn.cursor()
@@ -373,10 +349,6 @@ def report(conn) -> None:
                     mid, lib, pipe, base, dl, lk)
     logger.info("=" * 64)
 
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 
 def main() -> None:
     api = HfApi()
