@@ -1,0 +1,24 @@
+version: 2
+
+models:
+  - name: stg_github_repos
+    description: "Repo bronze aggregates joined with API enrichment, one row per repo."
+    columns:
+      - name: repo_id
+        description: "GitHub repository id."
+        tests:
+          - unique
+          - not_null
+      - name: repo_name
+        description: "owner/name of the repository."
+        tests:
+          - not_null
+
+  - name: stg_hf_models
+    description: "Cleaned projection of the HuggingFace models bronze table."
+    columns:
+      - name: model_id
+        description: "HuggingFace model id (owner/name)."
+        tests:
+          - unique
+          - not_null

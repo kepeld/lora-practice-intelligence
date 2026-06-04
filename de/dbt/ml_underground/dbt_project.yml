@@ -1,0 +1,26 @@
+name: 'ml_underground'
+version: '1.0.0'
+config-version: 2
+
+profile: 'ml_underground'
+
+model-paths: ["models"]
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Medallion layers, each in its own Snowflake schema.
+# staging = views; silver/gold = materialised tables. (bronze schema is
+# populated by load_to_snowflake.py, not dbt.)
+models:
+  ml_underground:
+    staging:
+      +materialized: view
+      +schema: staging
+    silver:
+      +materialized: table
+      +schema: silver
+    gold:
+      +materialized: table
+      +schema: gold
