@@ -3,6 +3,7 @@
 from lora_config_extractor import (
     extract_from_adapter_config,
     extract_from_file,
+    extract_from_hf_model_card,
     extract_from_python,
     extract_from_readme,
     extract_from_yaml,
@@ -244,6 +245,123 @@ def test_merge_empty_returns_empty():
     assert merge_params([]) == {}
 
 
+# ---------------------------------------------------------------------------
+# HF model-card extractor (US-4.2 Variant D)
+# ---------------------------------------------------------------------------
+
+def test_hf_card_python_fenced_block():
+    card = (
+        "# My LoRA model\n"
+        "Trained with PEFT.\n"
+        "\n"
+        "```python\n"
+        "from peft import LoraConfig\n"
+        "config = LoraConfig(r=16, lora_alpha=32, "
+        "target_modules=['q_proj','v_proj'])\n"
+        "```\n"
+        "\n"
+        "Trained for 3 epochs.\n"
+    )
+    rows = extract_from_hf_model_card(card)
+    rank = _find(rows, "rank_value")
+    alpha = _find(rows, "lora_alpha")
+    assert rank and rank["param_value"] == "16" and rank["source"] == "ast"
+    assert alpha and alpha["param_value"] == "32" and alpha["source"] == "ast"
+    assert rank["confidence"] == 1.0
+
+
+def test_hf_card_json_fenced_block():
+    card = (
+        "## Adapter config\n"
+        "```json\n"
+        '{"r": 8, "lora_alpha": 16, "target_modules": ["q_proj","v_proj"]}\n'
+        "```\n"
+    )
+    rows = extract_from_hf_model_card(card)
+    assert _find(rows, "rank_value")["param_value"] == "8"
+    assert _find(rows, "lora_alpha")["param_value"] == "16"
+    assert all(r["confidence"] == 1.0 for r in rows
+               if r["param_name"] in {"rank_value", "lora_alpha"})
+
+
+def test_hf_card_yaml_fenced_block():
+    card = (
+        "Training was done with axolotl. Config below.\n"
+        "```yaml\n"
+        "lora_r: 32\n"
+        "lora_alpha: 64\n"
+        "lora_dropout: 0.05\n"
+        "```\n"
+    )
+    rows = extract_from_hf_model_card(card)
+    assert _find(rows, "rank_value")["param_value"] == "32"
+    assert _find(rows, "lora_alpha")["param_value"] == "64"
+
+
+def test_hf_card_yaml_front_matter():
+    card = (
+        "---\n"
+        "lora_r: 16\n"
+        "lora_alpha: 32\n"
+        "tags:\n"
+        "  - peft\n"
+        "---\n"
+        "\n"
+        "# Model README\n"
+        "Just prose, no structured config.\n"
+    )
+    rows = extract_from_hf_model_card(card)
+    assert _find(rows, "rank_value")["param_value"] == "16"
+    assert _find(rows, "lora_alpha")["param_value"] == "32"
+
+
+def test_hf_card_regex_fallback_on_prose():
+    # No fenced block, no front-matter — pure prose with rank=N pattern.
+    card = (
+        "# My model\n"
+        "I trained with rank=64 and lora_alpha=128 for 5 epochs.\n"
+    )
+    rows = extract_from_hf_model_card(card)
+    rank = _find(rows, "rank_value")
+    assert rank and rank["param_value"] == "64" and rank["source"] == "regex"
+    assert rank["confidence"] == 0.5
+
+
+def test_hf_card_fenced_block_overrides_prose():
+    # Both a code block (rank=16, high confidence) AND prose ("rank=8")
+    # should both be emitted; merge_params will pick the AST one.
+    card = (
+        "# Setup\n"
+        "Earlier I used rank=8 but settled on:\n"
+        "```python\n"
+        "LoraConfig(r=16, lora_alpha=32)\n"
+        "```\n"
+    )
+    rows = extract_from_hf_model_card(card)
+    # Both rank-rows should exist in `rows` (one ast, one regex)
+    ast_rank = [r for r in rows if r["param_name"] == "rank_value" and r["source"] == "ast"]
+    # Regex should NOT see "rank=8" because we strip fenced blocks before
+    # regex pass — but the *prose* line "rank=8" survives.
+    regex_rank = [r for r in rows if r["param_name"] == "rank_value" and r["source"] == "regex"]
+    assert ast_rank and ast_rank[0]["param_value"] == "16"
+    # Regex caught the prose value of 8
+    assert regex_rank and regex_rank[0]["param_value"] == "8"
+    # merge_params will pick the AST one
+    merged = merge_params(rows)
+    assert merged["rank_value"] == "16"
+    assert merged["param_sources"]["rank_value"] == "ast"
+
+
+def test_hf_card_empty_returns_empty():
+    assert extract_from_hf_model_card("") == []
+    assert extract_from_hf_model_card(None) == []
+
+
+def test_hf_card_no_lora_signal_returns_empty():
+    card = "# Plain Whisper model\nJust a Whisper-large checkpoint, no LoRA.\n"
+    assert extract_from_hf_model_card(card) == []
+
+
 def test_yaml_drops_placeholder_values():
     # Template configs sometimes ship with the parameter name as the value
     # (`target_modules: target_modules`). The extractor must not emit those.
@@ -263,6 +381,35 @@ def test_yaml_drops_single_element_placeholder_list():
     assert rows == []
 
 
+def test_optimizer_truncates_at_paren():
+    # AST sometimes pulls a full call-style string ("AdamW(lr=1e-4,...)"). The
+    # extractor must reduce it to the bare name 'AdamW'.
+    code = (
+        "from transformers import TrainingArguments\n"
+        "args = TrainingArguments(optim='adamw_torch (betas=0.9,0.999)')\n"
+    )
+    rows = extract_from_python(code)
+    opt = _find(rows, "optimizer")
+    assert opt and opt["param_value"] == "adamw_torch"
+
+
+def test_scheduler_truncates_at_space():
+    blob = "lr_scheduler_type: cosine with restarts\n"
+    rows = extract_from_yaml(blob)
+    sched = _find(rows, "scheduler")
+    assert sched and sched["param_value"] == "cosine"
+
+
+def test_optimizer_garbage_returns_no_row():
+    # A super-long blob (unlikely to be a real optimizer name) must be dropped.
+    code = (
+        "from transformers import TrainingArguments\n"
+        "args = TrainingArguments(optim='a' * 200)\n"
+    )
+    rows = extract_from_python(code)
+    assert _find(rows, "optimizer") is None
+
+
 def test_yaml_unwraps_deepspeed_optimizer_block():
     # DeepSpeed configs wrap optimizer/scheduler as nested objects with `type`.
     blob = (
@@ -278,8 +425,8 @@ def test_yaml_unwraps_deepspeed_optimizer_block():
     rows = extract_from_yaml(blob)
     opt = _find(rows, "optimizer")
     sch = _find(rows, "scheduler")
-    assert opt and opt["param_value"] == "AdamW"
-    assert sch and sch["param_value"] == "WarmupDecayLR"
+    assert opt and opt["param_value"] == "adamw"
+    assert sch and sch["param_value"] == "warmupdecaylr"
 
 
 def test_adapter_config_drops_placeholder_target_modules():
@@ -299,3 +446,14 @@ def test_merge_confidence_is_mean_of_picked_rows():
     merged = merge_params(rows)
     # picked: rank_value (1.0 from AST) + optimizer (0.9 from YAML) -> mean 0.95
     assert merged["extraction_confidence"] == 0.95
+
+
+def test_optimizer_value_is_normalized_lowercase():
+    # "AdamW" and "adamw" are the SAME optimizer; casing must not split them
+    # into separate practices (rare-quadrant noise in lora_practice_stats).
+    assert _find(extract_from_yaml("optimizer: AdamW\n"), "optimizer")["param_value"] == "adamw"
+    assert _find(extract_from_yaml("optimizer: adamw\n"), "optimizer")["param_value"] == "adamw"
+
+
+def test_scheduler_value_is_normalized_lowercase():
+    assert _find(extract_from_yaml("lr_scheduler_type: Cosine\n"), "scheduler")["param_value"] == "cosine"
