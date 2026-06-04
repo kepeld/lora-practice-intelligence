@@ -8,3 +8,10 @@ __pycache__/
 venv/
 node_modules/
 *.log
+.dbt/
+.user.yml
+
+# Local-only working notes — not committed
+COMMIT_RUNBOOK.md
+ISSUES.md
+ISSUES_TO_CREATE.md
