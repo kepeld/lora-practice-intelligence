@@ -1,7 +1,8 @@
 """LoRA-config extraction DAG — Step 4 (US-3.1, US-3.2).
 
-Stages: extract_raw (github_files -> lora_configs_raw) and merge_to_gold
-(priority merge AST > JSON > YAML > regex > LLM -> repo_lora_params).
+Stages: extract_raw (github_files -> lora_configs_raw), extract_llm (US-3.3 #7,
+LLM fallback for repos no structured layer matched -> lora_configs_raw), and
+merge_to_gold (priority merge AST > JSON > YAML > regex > LLM -> repo_lora_params).
 
 In parallel with the GitHub path: extract_hf_cards (huggingface_models_bronze
 -> hf_models_lora_params, Variant D).
@@ -286,6 +287,141 @@ def run_merge_to_gold(**context):
     return {"inserted": inserted, "skipped": skipped}
 
 
+def run_extract_llm(**context):
+    """LLM fallback (US-3.3, #7): for LoRA repos that have files but produced no
+    structured rows in lora_configs_raw, ask Claude to recover params and upsert
+    them as source='llm'. The downstream merge keeps llm at lowest priority, so
+    these rows only fill gaps no structured layer could.
+
+    No-ops (does not fail the DAG) when ANTHROPIC_API_KEY is unset or the
+    anthropic package is missing — the rest of the pipeline runs regardless.
+    """
+    import logging
+    import os
+    import sys
+
+    import mysql.connector
+
+    os.environ.setdefault("MYSQL_HOST", "mysql")
+    sys.path.insert(0, "/opt/airflow")
+
+    log = logging.getLogger(__name__)
+
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        log.warning("extract_llm: ANTHROPIC_API_KEY not set — skipping LLM fallback")
+        return {"skipped": "no ANTHROPIC_API_KEY"}
+    try:
+        import anthropic
+    except ImportError:
+        log.warning("extract_llm: anthropic package not installed — skipping")
+        return {"skipped": "anthropic not installed"}
+
+    from ingestion.llm_extractor import extract_from_llm
+
+    params = context["params"]
+    repo_limit = int(params["llm_repo_limit"])
+    files_per_repo = int(params["llm_max_files_per_repo"])
+    if repo_limit <= 0:
+        log.info("extract_llm: llm_repo_limit=0 — nothing to do")
+        return {"repos": 0, "rows": 0}
+
+    conn = mysql.connector.connect(
+        host=os.getenv("MYSQL_HOST", "mysql"),
+        user=os.getenv("MYSQL_USER", "root"),
+        password=os.getenv("MYSQL_PASSWORD", "root"),
+        database=os.getenv("MYSQL_DATABASE", "ml_underground"),
+    )
+
+    # Target set: LoRA repos with files but zero rows in lora_configs_raw
+    # (AST/JSON/YAML/regex all missed). Inserting llm rows removes a repo from
+    # this set, so re-runs won't re-bill it.
+    read_cur = conn.cursor(dictionary=True)
+    read_cur.execute(
+        """
+        SELECT f.repo_full_name
+        FROM github_files f
+        JOIN github_repos_enriched e
+          ON e.repo_name = f.repo_full_name
+         AND e.enrichment_status = 'ok'
+        WHERE f.content IS NOT NULL
+          AND f.repo_full_name NOT IN (SELECT repo_full_name FROM lora_configs_raw)
+        GROUP BY f.repo_full_name
+        ORDER BY f.repo_full_name
+        LIMIT %s
+        """,
+        (repo_limit,),
+    )
+    repos = [r["repo_full_name"] for r in read_cur.fetchall()]
+    read_cur.close()
+    log.info("extract_llm: %d repos need LLM fallback", len(repos))
+
+    # Bucket every target repo's files in one read (no interleaved cursors).
+    files_by_repo: dict = {}
+    if repos:
+        placeholders = ", ".join(["%s"] * len(repos))
+        fcur = conn.cursor(dictionary=True)
+        fcur.execute(
+            f"""
+            SELECT repo_full_name, file_id, file_path, file_category, content
+            FROM github_files
+            WHERE repo_full_name IN ({placeholders}) AND content IS NOT NULL
+            ORDER BY repo_full_name,
+                FIELD(file_category,
+                      'training_script', 'config', 'adapter_config', 'dependencies'),
+                file_id
+            """,
+            tuple(repos),
+        )
+        for row in fcur.fetchall():
+            files_by_repo.setdefault(row["repo_full_name"], []).append(row)
+        fcur.close()
+
+    client = anthropic.Anthropic()
+    insert_sql = (
+        "INSERT INTO lora_configs_raw "
+        "(repo_full_name, file_id, source, param_name, param_value, confidence) "
+        "VALUES (%s, %s, %s, %s, %s, %s) "
+        "ON DUPLICATE KEY UPDATE param_value=VALUES(param_value), "
+        "confidence=VALUES(confidence), extracted_at=CURRENT_TIMESTAMP"
+    )
+
+    write_cur = conn.cursor()
+    repos_with_rows = 0
+    rows_inserted = 0
+    failures = 0
+
+    for repo in repos:
+        files = files_by_repo.get(repo, [])[:files_per_repo]
+        if not files:
+            continue
+        try:
+            rows = extract_from_llm(files, client=client)
+        except Exception as exc:  # one repo failing must not stop the batch
+            failures += 1
+            log.warning("extract_llm: repo %s failed: %s", repo, exc)
+            continue
+        if not rows:
+            continue
+        # LLM rows are repo-level; key them to a representative file_id (the
+        # first after the training_script-first ordering) to satisfy the schema.
+        file_id = files[0]["file_id"]
+        write_cur.executemany(insert_sql, [
+            (repo, file_id, r["source"], r["param_name"],
+             r["param_value"], float(r["confidence"]))
+            for r in rows
+        ])
+        conn.commit()
+        repos_with_rows += 1
+        rows_inserted += len(rows)
+
+    write_cur.close()
+    conn.close()
+    log.info("extract_llm done: repos=%d, repos_with_rows=%d, rows=%d, failures=%d",
+             len(repos), repos_with_rows, rows_inserted, failures)
+    return {"repos": len(repos), "repos_with_rows": repos_with_rows,
+            "rows": rows_inserted, "failures": failures}
+
+
 # HF cards are small enough that we skip the raw-table audit trail the GitHub
 # side keeps — extract and merge per model in one pass.
 def run_extract_hf_cards(**context):
@@ -416,6 +552,9 @@ with DAG(
         # the current pool (~3400 cards with content); set lower for a fast
         # iteration during development.
         "hf_card_limit": Param(10000, type="integer", minimum=1),
+        # LLM fallback (#7): cap repos per run and files sent per repo.
+        "llm_repo_limit": Param(200, type="integer", minimum=0),
+        "llm_max_files_per_repo": Param(6, type="integer", minimum=1),
     },
     tags=["extraction", "manual", "lora_intelligence"],
 ) as dag:
@@ -432,6 +571,14 @@ with DAG(
         execution_timeout=timedelta(minutes=30),
     )
 
+    # US-3.3 / #7 — LLM fallback runs between raw extraction and the gold merge
+    # so its source='llm' rows are included in the priority merge.
+    extract_llm = PythonOperator(
+        task_id="extract_llm",
+        python_callable=run_extract_llm,
+        execution_timeout=timedelta(minutes=60),
+    )
+
     # Variant D — runs in parallel with the GitHub extraction. Independent
     # input (HF cards), independent output table (hf_models_lora_params), so
     # no ordering needed.
@@ -441,4 +588,4 @@ with DAG(
         execution_timeout=timedelta(minutes=30),
     )
 
-    extract_raw >> merge_to_gold
+    extract_raw >> extract_llm >> merge_to_gold

@@ -31,6 +31,8 @@ x-airflow-common: &airflow-common
     # here, .env points KAFKA/MYSQL/MINIO at localhost which breaks containers)
     GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     HF_BATCH_SIZE: ${HF_BATCH_SIZE:-100}
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-haiku-4-5}
     SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT:-}
     SNOWFLAKE_USER: ${SNOWFLAKE_USER:-}
     SNOWFLAKE_PASSWORD: ${SNOWFLAKE_PASSWORD:-}
