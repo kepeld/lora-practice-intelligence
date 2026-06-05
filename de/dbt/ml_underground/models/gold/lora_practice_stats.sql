@@ -14,8 +14,8 @@
 -- Quadrants are computed against medians of prevalence and avg_score across
 -- buckets within each parameter, so each parameter has its own thresholds.
 --
--- The placeholder weights in repo_lora_outcomes (US-4.1) carry through; when
--- the formula is finalised in Issue #6 this model recomputes.
+-- composite_success_score is the percentile-weighted blend finalised in Issue
+-- #6; this model recomputes against it automatically.
 {{ config(materialized='table') }}
 
 with params as (

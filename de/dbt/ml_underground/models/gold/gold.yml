@@ -22,15 +22,18 @@ models:
 
   - name: repo_lora_outcomes
     description: |
-      Preliminary composite_success_score per HF model (US-4.1).
-      Weights 0.4/0.3/0.3 are a PLACEHOLDER — finalize in Issue #6.
+      Composite success score per HF model (US-4.1, Issue #6). Each outcome
+      signal (downloads, likes, fine-tune fan-out) is mapped to its population
+      percentile, then blended: 0.3·downloads_pct + 0.2·likes_pct +
+      0.5·fan_out_pct, giving a [0,1] score. Correlational popularity signal,
+      not causal (selection bias — Risk 3).
     columns:
       - name: model_id
         tests:
           - unique
           - not_null
       - name: composite_success_score
-        description: "0.4·ln(downloads+1) + 0.3·ln(likes+1) + 0.3·ln(fan_out+1)."
+        description: "Weighted blend of percentile-ranked signals, in [0,1]."
       - name: fine_tune_fan_out
         description: "Count of other models that declare this one as base_model."
 
