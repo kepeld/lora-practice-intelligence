@@ -1,2 +1,5 @@
 # Development / test dependencies (install with: uv pip install -r requirements-dev.txt)
 pytest>=8.0
+pandas>=2.0
+# the lora_config_extractor YAML layer (and its tests) need PyYAML
+PyYAML>=6.0
