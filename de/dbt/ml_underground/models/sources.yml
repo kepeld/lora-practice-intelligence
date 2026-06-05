@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: "MySQL bronze tables replicated into Snowflake by load_to_snowflake.py."
+    database: ML_UNDERGROUND
+    schema: BRONZE
+    tables:
+      - name: github_repos_bronze
+      - name: github_repos_enriched
+      - name: huggingface_models_bronze
+      - name: github_repos_embedded
+      - name: github_hf_links
+      - name: github_files
+      - name: lora_configs_raw
+      - name: repo_lora_params
+      - name: hf_models_lora_params

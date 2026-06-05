@@ -1,0 +1,51 @@
+version: 2
+
+models:
+  - name: hf_model_tree
+    description: "Gold mart — base_model -> fine-tune counts. Feeds fine_tune_fan_out (US-4.1)."
+    columns:
+      - name: base_model
+        description: "The base model that the fine-tunes derive from."
+        tests:
+          - unique
+          - not_null
+
+  - name: repo_lora_params
+    description: "Gold mart — per-repo LoRA hyperparameters (US-3.1, US-3.2)."
+    columns:
+      - name: repo_full_name
+        tests:
+          - unique
+          - not_null
+      - name: extraction_confidence
+        description: "Mean confidence across the merged source rows (0-1)."
+
+  - name: repo_lora_outcomes
+    description: |
+      Preliminary composite_success_score per HF model (US-4.1).
+      Weights 0.4/0.3/0.3 are a PLACEHOLDER — finalize in Issue #6.
+    columns:
+      - name: model_id
+        tests:
+          - unique
+          - not_null
+      - name: composite_success_score
+        description: "0.4·ln(downloads+1) + 0.3·ln(likes+1) + 0.3·ln(fan_out+1)."
+      - name: fine_tune_fan_out
+        description: "Count of other models that declare this one as base_model."
+
+  - name: lora_practice_stats
+    description: |
+      Common/rare practice quadrants per hyperparameter (US-4.2, Issue #10).
+      Built from the HF-side params x outcomes JOIN (Variant D) — no
+      GitHub<->HF linkage required.
+    columns:
+      - name: param_name
+        tests:
+          - not_null
+      - name: quadrant
+        description: "common+works | common+fails | rare+works | rare+fails"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['common+works', 'common+fails', 'rare+works', 'rare+fails']

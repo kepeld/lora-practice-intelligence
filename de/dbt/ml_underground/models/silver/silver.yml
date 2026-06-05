@@ -1,0 +1,76 @@
+version: 2
+
+models:
+  - name: repos
+    description: "Conformed repo entity — one row per GitHub repository."
+    columns:
+      - name: repo_id
+        description: "GitHub repository id."
+        tests:
+          - unique
+          - not_null
+      - name: is_enriched
+        description: "True if the repo has GitHub API enrichment."
+
+  - name: hf_models
+    description: "Conformed HuggingFace model entity with tag_count and is_fine_tune."
+    columns:
+      - name: model_id
+        description: "HuggingFace model id."
+        tests:
+          - unique
+          - not_null
+
+  - name: github_hf_links
+    description: "GitHub LoRA repo <-> HF model links, one row per (repo, model) pair."
+    columns:
+      - name: repo_full_name
+        tests:
+          - not_null
+      - name: model_id
+        tests:
+          - not_null
+      - name: best_confidence
+        description: "Strongest link confidence found for the pair (0-1)."
+
+  - name: lora_configs_raw
+    description: "Per-source raw LoRA-parameter extractions; many rows per repo (US-3.1, US-3.2)."
+    columns:
+      - name: config_id
+        tests:
+          - unique
+          - not_null
+      - name: repo_full_name
+        tests:
+          - not_null
+      - name: source
+        description: "ast | json | yaml | regex | llm (llm reserved for US-3.3)."
+        tests:
+          - not_null
+
+  - name: hf_models_lora_params
+    description: |
+      Per-HF-model LoRA hyperparameters extracted from model cards (Variant D
+      for US-4.2). Joins to repo_lora_outcomes on model_id directly.
+    columns:
+      - name: model_id
+        tests:
+          - unique
+          - not_null
+      - name: extraction_confidence
+        description: "Mean confidence across the merged source rows (0-1)."
+
+  - name: repos_needing_llm_extraction
+    description: |
+      Target list for Issue #7 (US-3.3 LLM-extraction fallback): repos
+      that have files in github_files but yielded zero rows in
+      repo_lora_params.
+    columns:
+      - name: repo_full_name
+        tests:
+          - unique
+          - not_null
+      - name: file_count
+        description: "How many files we already have for the repo."
+      - name: training_scripts
+        description: "Subset of file_count categorised as training_script."
