@@ -1,14 +1,7 @@
-"""
-Repository Enrichment Service
-
-Reads unenriched repositories from github_repos_bronze, fetches additional
-metadata from the GitHub API, and writes the result to github_repos_enriched.
-
-Mirrors the Airflow `repo_enricher` task. API budget per repo: 1x /repos
-(~14 metadata fields), 1x recursive git tree (has_tests / has_ci / dependency
-file), 1x readme, 1x dependency file, plus 2 pagination counts (contributors,
-commits in the last 30 days).
-"""
+"""Repository enrichment — drains the lora_search_discovery backlog (repos the
+targeted collector discovered but that are not yet in github_repos_enriched),
+fetches GitHub API metadata, and writes github_repos_enriched. Mirrors the
+hourly repo_enricher task."""
 
 from __future__ import annotations
 
@@ -25,10 +18,6 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_API_BASE = "https://api.github.com"
@@ -53,11 +42,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# MySQL schema
-# ---------------------------------------------------------------------------
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS github_repos_enriched (
@@ -92,11 +76,6 @@ CREATE TABLE IF NOT EXISTS github_repos_enriched (
 );
 """
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def parse_dt(value: str | None) -> datetime | None:
     """Parse a GitHub ISO timestamp into a naive UTC datetime."""
     if not value:
@@ -106,7 +85,6 @@ def parse_dt(value: str | None) -> datetime | None:
     except (ValueError, AttributeError):
         return None
 
-
 def decode_content(blob: dict | None) -> str | None:
     """Decode a base64 GitHub readme/contents blob into text."""
     if blob and blob.get("encoding") == "base64":
@@ -115,7 +93,6 @@ def decode_content(blob: dict | None) -> str | None:
         except Exception:
             return None
     return None
-
 
 def analyze_tree(tree: dict | None):
     """From a recursive git tree, derive (has_tests, has_ci, root dep file)."""
@@ -142,11 +119,6 @@ def analyze_tree(tree: dict | None):
             root_files.add(base)
     dep_path = next((d for d in DEP_FILES if d in root_files), None)
     return has_tests, has_ci, dep_path
-
-
-# ---------------------------------------------------------------------------
-# GitHub API client
-# ---------------------------------------------------------------------------
 
 class GitHubClient:
     def __init__(self, token: str):
@@ -216,11 +188,6 @@ class GitHubClient:
             f"/repos/{repo_name}/commits?since={since_iso}&per_page=1"
         )
 
-
-# ---------------------------------------------------------------------------
-# MySQL helpers
-# ---------------------------------------------------------------------------
-
 def get_connection():
     return mysql.connector.connect(
         host=MYSQL_HOST,
@@ -229,7 +196,6 @@ def get_connection():
         password=MYSQL_PASSWORD,
         database=MYSQL_DATABASE,
     )
-
 
 def init_schema(conn):
     cursor = conn.cursor()
@@ -241,17 +207,16 @@ def init_schema(conn):
     cursor.close()
     logger.info("Schema initialized")
 
-
 def fetch_unenriched_repos(conn, limit: int) -> list:
-    """Return repos from bronze that have not yet been enriched."""
+    """Discovered LoRA repos (lora_search_discovery) not yet in github_repos_enriched."""
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
         """
-        SELECT b.repo_id, b.repo_name
-        FROM github_repos_bronze b
-        LEFT JOIN github_repos_enriched e ON b.repo_id = e.repo_id
+        SELECT d.repo_id, d.repo_name
+        FROM lora_search_discovery d
+        LEFT JOIN github_repos_enriched e ON d.repo_id = e.repo_id
         WHERE e.repo_id IS NULL
-        ORDER BY b.event_count DESC
+        ORDER BY d.discovered_at DESC
         LIMIT %s
         """,
         (limit,),
@@ -259,7 +224,6 @@ def fetch_unenriched_repos(conn, limit: int) -> list:
     rows = cursor.fetchall()
     cursor.close()
     return rows
-
 
 def upsert_enriched(conn, data: dict):
     cursor = conn.cursor()
@@ -329,11 +293,6 @@ def upsert_enriched(conn, data: dict):
     conn.commit()
     cursor.close()
 
-
-# ---------------------------------------------------------------------------
-# Enrichment logic
-# ---------------------------------------------------------------------------
-
 def enrich_repo(client: GitHubClient, repo_id: int, repo_name: str) -> dict:
     """Fetch all enrichment data for a single repository."""
     result = {"repo_id": repo_id, "repo_name": repo_name, "enrichment_status": "ok"}
@@ -395,11 +354,6 @@ def enrich_repo(client: GitHubClient, repo_id: int, repo_name: str) -> dict:
 
     return result
 
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 def main():
     if not GITHUB_TOKEN:
         raise RuntimeError("GITHUB_TOKEN is not set. Add it to your .env file.")
@@ -448,7 +402,6 @@ def main():
                     "repo_name": repo_name,
                     "enrichment_status": "error",
                 })
-
 
 if __name__ == "__main__":
     main()

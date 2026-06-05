@@ -1,1 +1,1 @@
-"""ML Underground ingestion package — GH Archive → Kafka → MySQL/MinIO."""
+"""ML Underground ingestion: targeted GitHub/HF LoRA collectors, enrichment, file fetch, record linkage, and the LoRA-config extractor."""
