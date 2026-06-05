@@ -8,21 +8,6 @@
 CREATE DATABASE IF NOT EXISTS ml_underground;
 USE ml_underground;
 
-CREATE TABLE IF NOT EXISTS github_events_bronze (
-    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-    event_id        VARCHAR(64)  NOT NULL UNIQUE,
-    event_type      VARCHAR(64)  NOT NULL,
-    repo_id         BIGINT,
-    repo_name       VARCHAR(255),
-    actor_login     VARCHAR(128),
-    created_at      DATETIME,
-    ingested_at     DATETIME,
-    raw_payload     JSON,
-    INDEX idx_repo_name  (repo_name),
-    INDEX idx_event_type (event_type),
-    INDEX idx_created_at (created_at)
-);
-
 CREATE TABLE IF NOT EXISTS github_repos_bronze (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     repo_id         BIGINT       NOT NULL UNIQUE,
@@ -104,18 +89,4 @@ CREATE TABLE IF NOT EXISTS hf_models_embedded (
     model           VARCHAR(128),
     embedded_at     DATETIME,
     INDEX idx_model_id (model_id)
-);
-
--- Daily metric snapshots of top active repos — time series for trend detection.
-CREATE TABLE IF NOT EXISTS repo_metrics_history (
-    id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
-    repo_id             BIGINT       NOT NULL,
-    repo_name           VARCHAR(255),
-    snapshot_date       DATE         NOT NULL,
-    stargazers_count    INT          DEFAULT 0,
-    forks_count         INT          DEFAULT 0,
-    commit_count_30d    INT          DEFAULT 0,
-    open_issues_count   INT          DEFAULT 0,
-    UNIQUE KEY uq_repo_date (repo_id, snapshot_date),
-    INDEX idx_snapshot_date (snapshot_date)
 );
