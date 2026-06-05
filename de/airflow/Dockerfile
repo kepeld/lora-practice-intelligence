@@ -1,5 +1,5 @@
 FROM apache/airflow:2.8.0
-RUN pip install pymysql kafka-python mysql-connector-python boto3 requests python-dotenv huggingface-hub sentence-transformers qdrant-client
+RUN pip install pymysql mysql-connector-python requests python-dotenv huggingface-hub sentence-transformers qdrant-client
 
 # Pre-download the embedding model so the embed_repos task runs offline.
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
