@@ -39,15 +39,23 @@ models:
 
   - name: lora_practice_stats
     description: |
-      Common/rare practice quadrants per hyperparameter (US-4.2, Issue #10).
-      Built from the HF-side params x outcomes JOIN (Variant D) — no
-      GitHub<->HF linkage required.
+      Common/rare practice quadrants per hyperparameter (US-4.2, Issue #10),
+      built from the HF-side params x outcomes JOIN (Variant D). The works/fails
+      axis is base_model-stratified (score_vs_base) to control for base-model
+      popularity (Risk 3); sample_ok gates noisy small buckets; score_lift is the
+      effect size vs the parameter's pooled mean.
     columns:
       - name: param_name
         tests:
           - not_null
+      - name: avg_score_vs_base
+        description: "Mean of (model score - its base_model peer mean) — the base-stratified signal."
+      - name: score_lift
+        description: "Bucket mean score minus the parameter's pooled mean (effect size)."
+      - name: sample_ok
+        description: "True when prevalence >= 3 — enough models to trust the bucket."
       - name: quadrant
-        description: "common+works | common+fails | rare+works | rare+fails"
+        description: "common+works | common+fails | rare+works | rare+fails (works/fails on the base-stratified score)"
         tests:
           - not_null
           - accepted_values:
