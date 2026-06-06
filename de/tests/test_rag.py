@@ -100,6 +100,14 @@ def test_format_context_empty():
     assert "no matching" in _format_context([])
 
 
+def test_format_context_includes_repo_fields():
+    hits = [{"kind": "repo", "score": 0.8,
+             "object": {"repo_name": "org/repo", "primary_language": "Python",
+                        "topics": ["lora"]}}]
+    ctx = _format_context(hits)
+    assert "org/repo" in ctx and "Python" in ctx
+
+
 def test_build_prompt_includes_question_and_sources():
     hits = [{"kind": "model", "score": 0.9, "object": {"model_id": "alice/m"}}]
     body = build_prompt("what optimizer?", hits)[0]["content"]
