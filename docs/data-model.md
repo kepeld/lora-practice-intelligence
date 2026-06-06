@@ -34,7 +34,7 @@ Replicated as-is to Snowflake `BRONZE` by `load_to_snowflake.py`.
 | Model | Grain | Notes |
 | --- | --- | --- |
 | `repo_lora_params` | one row per repo | merged params + repo context |
-| `repo_lora_outcomes` | one row per HF model | success score (#6 placeholder) |
+| `repo_lora_outcomes` | one row per HF model | success score (#6) |
 | `hf_model_tree` | one row per `base_model` | fine-tune fan-out |
 | `lora_practice_stats` | one row per (param, value) | four quadrants (#10) |
 
@@ -51,23 +51,31 @@ Replicated as-is to Snowflake `BRONZE` by `load_to_snowflake.py`.
 
 ### Success score (`repo_lora_outcomes.composite_success_score`)
 
-A heavy-tail-dampened blend of model outcome signals:
+Each signal is mapped to its population percentile (0–1 via `percent_rank()`),
+then blended:
 
-    0.4·ln(downloads+1) + 0.3·ln(likes+1) + 0.3·ln(fine_tune_fan_out+1)
+    0.3·downloads_pct + 0.2·likes_pct + 0.5·fan_out_pct
 
-`fine_tune_fan_out` is how many other models declare this one as their
-`base_model` (from `hf_model_tree`). The weights are a placeholder; the final
-formula is #6.
+`fan_out_pct` carries the most weight because fine-tune fan-out — how many other
+models declare this one as their `base_model` (from `hf_model_tree`) — is the
+hardest signal to game. Percentile-normalising keeps every signal on the same
+[0,1] scale, so the weights mean what they say (#6).
 
 ### Four-quadrant practice stats (`lora_practice_stats`)
 
 For each (parameter, value) bucket we compute `prevalence` (how many models use
-it) and `avg_success_score`, then classify against the per-parameter medians:
+it) and `avg_score_vs_base` — the mean of each model's score minus the mean of
+its `base_model` peers, so a value is credited for beating peers on the *same*
+base model rather than for riding a popular one. Buckets are classified against
+the per-parameter medians of those two quantities:
 
-| | works (score ≥ median) | fails (score < median) |
+| | works (`avg_score_vs_base` ≥ median) | fails (< median) |
 | --- | --- | --- |
 | **common** (prevalence ≥ median) | table stakes | cargo cult |
 | **rare** (prevalence < median) | **hidden insight** | dead end |
+
+`sample_ok` flags buckets backed by at least 3 models, so a `rare + works` cell
+with a single model reads as noise rather than a hidden gem.
 
 The `rare + works` quadrant is the core product output. It is built via
 Variant D (HF-side params joined to outcomes on `model_id`), so no GitHub↔HF
