@@ -174,6 +174,11 @@ def extract_from_llm(files: list[dict], client: Any = None,
     """
     if not files:
         return []
+    messages = build_messages(files)
+    # All files were empty/whitespace: nothing to extract, and the API rejects an
+    # empty user message — skip the call entirely.
+    if not messages[0]["content"]:
+        return []
     if client is None:
         import anthropic
         client = anthropic.Anthropic()
@@ -191,7 +196,7 @@ def extract_from_llm(files: list[dict], client: Any = None,
         }],
         tools=[build_tool()],
         tool_choice={"type": "tool", "name": TOOL_NAME},
-        messages=build_messages(files),
+        messages=messages,
     )
 
     for block in response.content:

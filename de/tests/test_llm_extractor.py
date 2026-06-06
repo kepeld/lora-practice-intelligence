@@ -4,7 +4,6 @@ No network: extract_from_llm is exercised with a fake Anthropic client, and the
 prompt/tool/parse helpers are pure.
 """
 
-import json
 import types
 
 from llm_extractor import (
@@ -142,6 +141,13 @@ def test_extract_no_tool_use_returns_empty():
 def test_extract_empty_files_makes_no_call():
     client = _FakeClient(_response([_tool_use({"rank_value": 16})]))
     assert extract_from_llm([], client=client) == []
+    assert client.messages.calls == []
+
+
+def test_extract_whitespace_only_files_makes_no_call():
+    client = _FakeClient(_response([_tool_use({"rank_value": 16})]))
+    files = [{"file_path": "empty.py", "file_category": "config", "content": "   "}]
+    assert extract_from_llm(files, client=client) == []
     assert client.messages.calls == []
 
 
