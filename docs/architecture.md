@@ -51,8 +51,8 @@ lora_collector → hf_collector → files_fetcher → linker
 ### `lora_extraction_dag` — manual
 
 ```
-extract_raw → merge_to_gold        (chained)
-extract_hf_cards                   (independent branch: HF adapter_config.json, confidence 1.0)
+extract_raw → extract_llm → merge_to_gold   (chained; extract_llm is the #7 LLM fallback)
+extract_hf_cards                            (independent branch: HF adapter_config.json, confidence 1.0)
 ```
 
 ## Medallion layers (Snowflake)
@@ -79,4 +79,5 @@ See [data-model.md](data-model.md) for the table-level detail.
 - **Non-blocking embeddings.** The embedding tasks are a side branch off
   `hf_ingestion`, so vector-store hiccups never block the warehouse path.
 - **Layered extraction.** Params are extracted with a source priority of
-  AST > JSON > YAML > regex > LLM; the LLM fallback is the pending #7.
+  AST > JSON > YAML > regex > LLM; the LLM fallback (#7) runs as the
+  `extract_llm` task and no-ops when `ANTHROPIC_API_KEY` is absent.
