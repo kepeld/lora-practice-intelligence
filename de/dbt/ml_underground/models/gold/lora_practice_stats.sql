@@ -97,6 +97,10 @@ long_form as (
 
 joined as (
 
+    -- inner join: a model with params but no outcome row (e.g. extract_hf_cards
+    -- ran before hf_ingestion) has a NULL score that compares false in every
+    -- quadrant CASE arm and would silently land in 'rare+fails'. Excluding such
+    -- models keeps them out of the stats rather than misclassifying them.
     select
         lf.param_name,
         lf.param_value,
@@ -104,7 +108,7 @@ joined as (
         ms.composite_success_score,
         ms.score_vs_base
     from long_form lf
-    left join model_scores ms on ms.model_id = lf.model_id
+    join model_scores ms on ms.model_id = lf.model_id
 
 ),
 

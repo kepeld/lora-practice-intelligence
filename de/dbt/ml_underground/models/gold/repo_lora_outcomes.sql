@@ -58,11 +58,14 @@ joined as (
 
 ranked as (
 
+    -- coalesce so a missing downloads/likes count ranks lowest, matching the
+    -- pandas mirror's fillna(0); percent_rank() otherwise sorts NULLs last and
+    -- would score them near 1.0.
     select
         *,
-        percent_rank() over (order by downloads)         as downloads_pct,
-        percent_rank() over (order by likes)             as likes_pct,
-        percent_rank() over (order by fine_tune_fan_out) as fan_out_pct
+        percent_rank() over (order by coalesce(downloads, 0))         as downloads_pct,
+        percent_rank() over (order by coalesce(likes, 0))             as likes_pct,
+        percent_rank() over (order by fine_tune_fan_out)              as fan_out_pct
     from joined
 
 )

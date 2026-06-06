@@ -34,6 +34,8 @@ models:
           - not_null
       - name: composite_success_score
         description: "Weighted blend of percentile-ranked signals, in [0,1]."
+        tests:
+          - not_null
       - name: fine_tune_fan_out
         description: "Count of other models that declare this one as base_model."
 
@@ -50,6 +52,8 @@ models:
           - not_null
       - name: avg_score_vs_base
         description: "Mean of (model score - its base_model peer mean) — the base-stratified signal."
+        tests:
+          - not_null
       - name: score_lift
         description: "Bucket mean score minus the parameter's pooled mean (effect size)."
       - name: sample_ok
