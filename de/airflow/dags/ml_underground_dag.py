@@ -464,6 +464,9 @@ with DAG(
                     "repo_name": repo["repo_name"],
                     "primary_language": repo["primary_language"],
                     "topics": parse_topics(repo["topics"]),
+                    # truncated text so RAG can ground answers on actual practices
+                    # (US-5.3), not just rank by metadata.
+                    "readme_content": (repo["readme_content"] or "")[:2000],
                     "enriched_at": repo["enriched_at"].isoformat()
                     if repo["enriched_at"] else None,
                 },
@@ -568,6 +571,8 @@ with DAG(
                     "library_name": row["library_name"],
                     "downloads": row["downloads"],
                     "likes": row["likes"],
+                    # truncated card text so RAG can ground answers on it (US-5.3).
+                    "card_content": (row["card_content"] or "")[:2000],
                 },
             ))
         client.upsert(collection_name=COLLECTION, points=points)
