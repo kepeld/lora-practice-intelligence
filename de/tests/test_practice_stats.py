@@ -13,7 +13,7 @@ pd = pytest.importorskip("pandas")
 # ml/ is not on the default test path (conftest only adds de/ingestion).
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "ml"))
 
-from practice_stats import MIN_SAMPLE, _score_vs_base, practice_stats
+from practice_stats import MIN_SAMPLE, _score_vs_base, practice_stats  # noqa: E402
 
 
 def _cell(out, param, value):
@@ -68,8 +68,20 @@ def test_quadrants_use_stratified_score_and_prevalence():
 
 def test_sample_ok_min_sample_gate():
     out = practice_stats(_opt_frame())
-    assert _cell(out, "optimizer", "good")["sample_ok"] == (3 >= MIN_SAMPLE)
-    assert bool(_cell(out, "optimizer", "rare")["sample_ok"]) is False
+    assert bool(_cell(out, "optimizer", "good")["sample_ok"]) is True   # prevalence 3
+    assert bool(_cell(out, "optimizer", "rare")["sample_ok"]) is False  # prevalence 1
+
+
+def test_sample_ok_boundary():
+    rows = [{"model_id": f"a{i}", "base_model": "B",
+             "composite_success_score": 0.5, "optimizer": "at_threshold"}
+            for i in range(MIN_SAMPLE)]
+    rows += [{"model_id": f"b{i}", "base_model": "B",
+              "composite_success_score": 0.5, "optimizer": "below_threshold"}
+             for i in range(MIN_SAMPLE - 1)]
+    out = practice_stats(pd.DataFrame(rows))
+    assert bool(_cell(out, "optimizer", "at_threshold")["sample_ok"]) is True
+    assert bool(_cell(out, "optimizer", "below_threshold")["sample_ok"]) is False
 
 
 def test_score_lift_is_relative_to_param_mean():

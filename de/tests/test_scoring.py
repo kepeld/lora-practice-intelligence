@@ -13,7 +13,7 @@ pd = pytest.importorskip("pandas")
 # ml/ is not on the default test path (conftest only adds de/ingestion).
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "ml"))
 
-from scoring import WEIGHTS, add_success_score, _percent_rank
+from scoring import WEIGHTS, add_success_score, _percent_rank  # noqa: E402
 
 
 def test_weights_sum_to_one():
