@@ -17,9 +17,10 @@ for unquoted identifiers).
 
 from __future__ import annotations
 
-# Tunable weights — should sum to 1.0. fine_tune_fan_out is the hardest signal
-# to game (other people built on the model), so it carries the most weight.
-WEIGHTS = {"fine_tune_fan_out": 0.5, "downloads": 0.3, "likes": 0.2}
+# Tunable weights — should sum to 1.0. Downloads dominates because it is the
+# only signal that varies across nearly the whole corpus; fan_out is structurally
+# ~0 for adapters (1.4% of models, #63) and stays only as a small bonus.
+WEIGHTS = {"downloads": 0.55, "likes": 0.35, "fine_tune_fan_out": 0.10}
 
 _SIGNALS = ("downloads", "likes", "fine_tune_fan_out")
 

@@ -8,4 +8,7 @@ select
     array_agg(model_id)     as fine_tune_models
 from {{ ref('hf_models') }}
 where base_model is not null
+  -- a model declaring itself as its own base is metadata noise, not a
+  -- fine-tune; counting it inflates fan_out by +1 (#64)
+  and model_id != base_model
 group by base_model

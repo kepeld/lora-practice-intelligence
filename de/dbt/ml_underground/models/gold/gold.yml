@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: hf_model_tree
-    description: "Gold mart — base_model -> fine-tune counts. Feeds fine_tune_fan_out (US-4.1)."
+    description: "Gold mart — base_model -> fine-tune counts, excluding self-referential rows (model_id = base_model, #64). Feeds fine_tune_fan_out (US-4.1)."
     columns:
       - name: base_model
         description: "The base model that the fine-tunes derive from."
@@ -24,9 +24,10 @@ models:
     description: |
       Composite success score per HF model (US-4.1, Issue #6). Each outcome
       signal (downloads, likes, fine-tune fan-out) is mapped to its population
-      percentile, then blended: 0.3·downloads_pct + 0.2·likes_pct +
-      0.5·fan_out_pct, giving a [0,1] score. Correlational popularity signal,
-      not causal (selection bias — Risk 3).
+      percentile, then blended: 0.55·downloads_pct + 0.35·likes_pct +
+      0.10·fan_out_pct, giving a [0,1] score (fan_out de-weighted in #63 —
+      structurally ~0 for adapters). Correlational popularity signal, not
+      causal (selection bias — Risk 3).
     columns:
       - name: model_id
         tests:

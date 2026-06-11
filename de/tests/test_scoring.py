@@ -65,3 +65,9 @@ def test_weights_are_respected():
     })
     out = add_success_score(df)
     assert out["composite_success_score"].iloc[1] == WEIGHTS["fine_tune_fan_out"]
+
+
+def test_fan_out_weight_stays_minor():
+    # #63: fan_out is structurally ~0 for adapters (1.4% of the corpus), so it
+    # must never out-weigh the signals that actually vary.
+    assert WEIGHTS["fine_tune_fan_out"] <= WEIGHTS["likes"] <= WEIGHTS["downloads"]

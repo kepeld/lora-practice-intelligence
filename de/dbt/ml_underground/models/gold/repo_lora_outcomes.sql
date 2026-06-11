@@ -8,9 +8,12 @@
 -- weight. Now every signal contributes on the same [0,1] scale and the weights
 -- mean what they say.
 --
--- Weights (tunable): fine-tune fan-out is the hardest signal to game — other
--- people chose to build on the model — so it carries the most weight.
---   fine_tune_fan_out 0.5 | downloads 0.3 | likes 0.2
+-- Weights (tunable): downloads carries the most weight — it is the only signal
+-- that varies across nearly the whole corpus. Fan-out, while the hardest signal
+-- to game when present, is structurally ~0 for adapters (1.4% of models have
+-- fan_out > 0; an adapter's base is a foundation model, and nothing fine-tunes
+-- on top of an adapter), so it is kept only as a small bonus (#63).
+--   downloads 0.55 | likes 0.35 | fine_tune_fan_out 0.10
 --
 -- Caveat (Risk 3, selection bias): only models published to HF are scored, and
 -- popularity is influenced by author reach, not just technique. Treat the score
@@ -90,7 +93,7 @@ select
     round(fan_out_pct, 4)   as fan_out_pct,
 
     -- weighted blend of the percentile-normalised signals, in [0,1]
-    round(0.3 * downloads_pct + 0.2 * likes_pct + 0.5 * fan_out_pct, 4)
+    round(0.55 * downloads_pct + 0.35 * likes_pct + 0.10 * fan_out_pct, 4)
         as composite_success_score
 
 from ranked
