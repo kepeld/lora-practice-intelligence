@@ -27,5 +27,5 @@ select
     homepage,
     enriched_at,
     enrichment_status,
-    enriched_at is not null as is_enriched
+    enrichment_status = 'ok' as is_enriched
 from {{ ref('stg_github_repos') }}

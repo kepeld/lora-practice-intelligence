@@ -92,6 +92,21 @@ long_form as (
     union all
     select model_id, 'bf16', bf16::varchar
     from params where bf16 is not null
+    union all
+    select model_id, 'learning_rate', learning_rate::varchar
+    from params where learning_rate is not null
+    union all
+    select model_id, 'lora_bias', lora_bias
+    from params where lora_bias is not null
+    union all
+    select model_id, 'warmup_steps', warmup_steps::varchar
+    from params where warmup_steps is not null
+    union all
+    select model_id, 'gradient_checkpointing', gradient_checkpointing::varchar
+    from params where gradient_checkpointing is not null
+    union all
+    select model_id, 'fp16', fp16::varchar
+    from params where fp16 is not null
 
 ),
 

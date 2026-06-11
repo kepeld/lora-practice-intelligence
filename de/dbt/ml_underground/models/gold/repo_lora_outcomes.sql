@@ -32,6 +32,9 @@ with hf as (
         likes,
         is_fine_tune
     from {{ ref('hf_models') }}
+    -- LoRA population only: success percentiles must rank a LoRA model against
+    -- its peers, not be diluted by the ~4.7k organic non-LoRA HF models.
+    where is_lora_relevant
 
 ),
 
