@@ -89,8 +89,10 @@ def normalize_name(name: str | None) -> str | None:
 # configs (e.g. `target_modules: target_modules` in axolotl template files).
 # A value that is just a parameter-name alias is meaningless and must be
 # dropped — otherwise we end up with target_modules=["target_modules"] etc.
+# 'none'/'null' excluded on purpose: 'none' is the canonical PEFT lora_bias value
+# (and a valid "no scheduler"), so treating it as a placeholder NULLs real data.
 _PLACEHOLDER_STRINGS = set(ALIASES.keys()) | {
-    "true", "false", "none", "null", "auto",
+    "true", "false", "auto",
 }
 
 
@@ -484,6 +486,10 @@ def merge_params(raw_rows: list[dict]) -> dict:
 
     by_param: dict[str, list[dict]] = defaultdict(list)
     for row in raw_rows:
+        # Skip empty extractions (e.g. a YAML key with no value): otherwise an
+        # empty-string row can win the same-tier max() and shadow valid values.
+        if row["param_value"] in (None, ""):
+            continue
         by_param[row["param_name"]].append(row)
 
     final: dict[str, Any] = {}

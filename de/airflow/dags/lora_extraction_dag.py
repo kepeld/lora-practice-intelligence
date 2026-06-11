@@ -190,7 +190,24 @@ def _coerce(name: str, raw: str | None):
         lo, hi = _FLOAT_BOUNDS[name]
         return v if lo <= v <= hi else None
     if name in ("bf16", "fp16", "gradient_checkpointing", "merge_and_unload"):
-        return str(raw).strip().lower() in ("1", "true", "yes")
+        s = str(raw).strip()
+        # DeepSpeed ZeRO configs store these as {"enabled": true/false/"auto"}.
+        if s[:1] == "{":
+            import ast
+            d = None
+            for loader in (json.loads, ast.literal_eval):
+                try:
+                    d = loader(s)
+                    break
+                except (ValueError, SyntaxError, TypeError):
+                    d = None
+            if not isinstance(d, dict):
+                return None
+            v = d.get("enabled")
+            if v is None or (isinstance(v, str) and v.strip().lower() == "auto"):
+                return None
+            return v is True or str(v).strip().lower() in ("1", "true", "yes")
+        return s.lower() in ("1", "true", "yes")
     if name == "target_modules":
         # Already JSON-serialized by the extractor when it was a list.
         try:
@@ -452,11 +469,16 @@ def run_extract_hf_cards(**context):
     )
 
     read_cur = conn.cursor(dictionary=True)
+    # incremental: skip models already in hf_models_lora_params so a re-run
+    # finishes the backlog fast instead of re-fetching everything (truncate the
+    # table to force a full refresh).
     read_cur.execute(
         "SELECT model_id, tags, card_content, is_lora_relevant "
-        "FROM huggingface_models_bronze "
-        "WHERE (card_content IS NOT NULL AND CHAR_LENGTH(card_content) > 200) "
-        "   OR is_lora_relevant = TRUE "
+        "FROM huggingface_models_bronze b "
+        "WHERE ((card_content IS NOT NULL AND CHAR_LENGTH(card_content) > 200) "
+        "       OR is_lora_relevant = TRUE) "
+        "  AND NOT EXISTS (SELECT 1 FROM hf_models_lora_params p "
+        "                  WHERE p.model_id = b.model_id) "
         "ORDER BY model_id "
         "LIMIT %s",
         (card_limit,),
@@ -539,11 +561,12 @@ with DAG(
     dag_id="lora_extraction_dag",
     default_args=default_args,
     description="Step 4: extract LoRA hyperparameters from github_files and HuggingFace model cards",
-    schedule_interval=None,        # manual trigger
+    schedule_interval="@daily",    # daily — extract_hf_cards is incremental, so it
+                                   # only processes newly-ingested models
     start_date=days_ago(1),
     catchup=False,
     max_active_runs=1,
-    dagrun_timeout=timedelta(hours=2),
+    dagrun_timeout=timedelta(hours=3),
     params={
         # Cap how many github_files rows we walk per run. The default
         # comfortably covers the current corpus (~4900 files).
@@ -585,7 +608,9 @@ with DAG(
     extract_hf_cards = PythonOperator(
         task_id="extract_hf_cards",
         python_callable=run_extract_hf_cards,
-        execution_timeout=timedelta(minutes=30),
+        # ~150 adapter_config fetches/min over HTTP; the grown peft corpus (~9k
+        # adapters) needs well over the old 30 min, which timed out mid-sweep.
+        execution_timeout=timedelta(minutes=120),
     )
 
     extract_raw >> extract_llm >> merge_to_gold
