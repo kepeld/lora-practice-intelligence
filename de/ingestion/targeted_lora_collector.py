@@ -67,6 +67,21 @@ REPO_SEARCH_QUERIES = [
     "qlora in:name,description language:python",
 ]
 
+# Break GitHub Search's 1000-result-per-query cap by partitioning on creation
+# date: LoRA took off in 2023, so a single newest-first query never sees the
+# older long tail. Each base query is run once per window; each window returns
+# its own <=1000 slice. A wider GitHub corpus means more repos can be linked to
+# HF models (github_hf_links) -- i.e. tracing which repo a practice came from --
+# plus richer repo_lora_params. (The HF-side practice quadrants are Variant D.)
+DATE_WINDOWS = [
+    "created:<2023-01-01",
+    "created:2023-01-01..2023-06-30",
+    "created:2023-07-01..2023-12-31",
+    "created:2024-01-01..2024-06-30",
+    "created:2024-07-01..2024-12-31",
+    "created:>=2025-01-01",
+]
+
 # "LoRa" the radio protocol (LoRaWAN / IoT long-range RF) collides with "LoRA"
 # the ML technique (Low-Rank Adaptation). Repository Search for topic:lora /
 # "lora in:name" pulls in large amounts of firmware/IoT projects. A repo whose
@@ -76,7 +91,8 @@ RADIO_LORA_BLOCKLIST = [
     "lpwan", "sx1276", "sx1278", "sx1262", "sx1280", "rfm95", "rfm96", "rfm9x",
     "ttgo", "heltec", "expresslrs", "elrs", "radio control", "rc link",
     "esp32", "esp8266", "arduino", "firmware", "transceiver", "gateway",
-    "ham radio", "aprs", "soft radio", "rnode", "reticulum",
+    "ham radio", "hamradio", "aprs", "soft radio", "rnode", "reticulum",
+    "iot", "embedded",
 ]
 
 # These override the blocklist: clear ML-LoRA signal keeps a repo even if it
@@ -85,6 +101,7 @@ ML_LORA_SIGNALS = [
     "fine-tun", "finetun", "peft", "qlora", "diffusion", "stable-diffusion",
     "llm", "large language model", "transformer", "huggingface", "hugging face",
     "pytorch", "adapter", "low-rank", "low rank", "checkpoint", "safetensors",
+    "embedding",
 ]
 
 # GitHub Search API: 100 results/page, 10 pages max => 1000-result hard cap.
@@ -228,11 +245,13 @@ def collect_candidates(client: GitHubClient, conn) -> int:
     """Run all search queries, recording every discovered repo; returns new count."""
     discovered_before = _count_discovered(conn)
 
-    for query in REPO_SEARCH_QUERIES:
-        repos = _search(client, query)
-        for repo in repos:
-            record_discovery(conn, repo["repo_id"], repo["repo_name"], "repo_search", query)
-        logger.info("repo_search '%s' -> %d repos", query, len(repos))
+    for base in REPO_SEARCH_QUERIES:
+        for window in DATE_WINDOWS:
+            query = f"{base} {window}"
+            repos = _search(client, query)
+            for repo in repos:
+                record_discovery(conn, repo["repo_id"], repo["repo_name"], "repo_search", query)
+            logger.info("repo_search '%s' -> %d repos", query, len(repos))
 
     discovered_after = _count_discovered(conn)
     return discovered_after - discovered_before

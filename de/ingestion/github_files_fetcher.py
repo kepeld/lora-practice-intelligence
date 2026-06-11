@@ -196,6 +196,12 @@ def fetch_repo_files(client: GitHubClient, conn, repo_full_name: str) -> dict:
     if not tree:
         stats["skipped"] = -1  # tree unavailable (empty repo / 404)
         return stats
+    if tree.get("truncated"):
+        # GitHub caps recursive trees (~100k entries / 7 MB); a partial listing
+        # hides some training/config files. Record + surface it instead of
+        # silently treating the repo as having no such files.
+        stats["truncated"] = 1
+        logger.warning("%s: git tree truncated -- file inventory incomplete", repo_full_name)
     time.sleep(REQUEST_DELAY)
 
     cache = existing_shas(conn, repo_full_name)
@@ -228,7 +234,10 @@ def fetch_repo_files(client: GitHubClient, conn, repo_full_name: str) -> dict:
             raw = content.encode("utf-8", errors="ignore")
             file_size = len(raw)
             if file_size > MAX_FILE_BYTES:
-                content = content[:MAX_FILE_BYTES]
+                # truncate on bytes (not chars) so the stored text stays within
+                # the byte budget and file_size matches what we actually keep.
+                content = raw[:MAX_FILE_BYTES].decode("utf-8", errors="ignore")
+                file_size = len(content.encode("utf-8"))
                 truncated = True
 
         upsert_file(conn, {

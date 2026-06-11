@@ -96,6 +96,9 @@ def decode_content(blob: dict | None) -> str | None:
 
 def analyze_tree(tree: dict | None):
     """From a recursive git tree, derive (has_tests, has_ci, root dep file)."""
+    if tree and tree.get("truncated"):
+        # partial tree -> has_tests/has_ci/dep_path may be false negatives.
+        logger.warning("git tree truncated -- has_tests/has_ci/dep may be incomplete")
     has_tests = has_ci = False
     root_files = set()
     for entry in (tree or {}).get("tree", []):

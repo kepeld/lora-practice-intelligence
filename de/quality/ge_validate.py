@@ -28,6 +28,9 @@ SUITES = {
         gxe.ExpectColumnValuesToNotBeNull(column="repo_id"),
     ],
     "github_repos_enriched": [
+        # collapse guard: floor well below the established corpus (~5k) so a
+        # sudden shrink fails the gate instead of silently reaching the DuckDB warehouse.
+        gxe.ExpectTableRowCountToBeBetween(min_value=1000),
         gxe.ExpectColumnValuesToNotBeNull(column="repo_id"),
         gxe.ExpectColumnProportionOfUniqueValuesToBeBetween(
             column="repo_id", min_value=1.0
@@ -40,7 +43,9 @@ SUITES = {
         ),
     ],
     "huggingface_models_bronze": [
-        gxe.ExpectTableRowCountToBeBetween(min_value=1),
+        # collapse guard: floor well below the established corpus (~6k) so an HF
+        # outage / bad filter / truncated load fails the gate before the DuckDB warehouse.
+        gxe.ExpectTableRowCountToBeBetween(min_value=1000),
         gxe.ExpectColumnValuesToNotBeNull(column="model_id"),
         gxe.ExpectColumnProportionOfUniqueValuesToBeBetween(
             column="model_id", min_value=1.0

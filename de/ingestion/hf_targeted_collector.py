@@ -48,31 +48,33 @@ MYSQL_USER = os.getenv("MYSQL_USER", "root")
 MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "root")
 MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "ml_underground")
 
-# How many LoRA models to land in the corpus. Discovery may surface more;
-# ingestion stops once this many *new* models have been written. Override via
+# How many NEW LoRA models to ingest per run. 0 = unbounded: drain the whole
+# discovery backlog (use for a full backfill). Discovery may surface more than
+# this; ingestion stops once this many new models are written. Override via
 # HF_LORA_TARGET_COUNT.
 TARGET_COUNT = int(os.getenv("HF_LORA_TARGET_COUNT", "1500"))
 
-# Skip models below this download count -- filters out abandoned/empty repos.
-# Override via HF_LORA_MIN_DOWNLOADS.
-MIN_DOWNLOADS = int(os.getenv("HF_LORA_MIN_DOWNLOADS", "100"))
+# Skip models below this download count -- drops abandoned/empty adapters while
+# keeping the real-adapter long tail. Safe to go low now: the peft-only query is
+# high-precision, so a low floor admits real adapters, not merged/full noise.
+# A small floor still keeps 0-download test uploads from re-diluting the score.
+MIN_DOWNLOADS = int(os.getenv("HF_LORA_MIN_DOWNLOADS", "10"))
 
-# Per-search cap on models pulled from the Hub (most-downloaded first).
-SEARCH_LIMIT = int(os.getenv("HF_LORA_SEARCH_LIMIT", "1000"))
+# Per-search cap on models pulled from the Hub. 0 (default) = FULL SWEEP:
+# paginate the entire filter space instead of only the top-N by downloads, so
+# discovery reaches the long tail where rare practices live -- the main lever for
+# corpus size. Set a positive value to cap a single query.
+SEARCH_LIMIT = int(os.getenv("HF_LORA_SEARCH_LIMIT", "0"))
 
 # Small delay between model-card fetches to stay polite to the Hub.
 CARD_FETCH_DELAY = 0.05
 
-# HF Hub searches. `filter` matches tags/library; `search` matches free text.
-# Each entry is (label, kwargs-for-list_models).
+# Only the peft library/tag: these models were saved via peft.save_pretrained, so
+# they carry adapter_config.json (confidence-1.0 params). The broader lora/qlora/
+# adapter tags and free-text search pulled in merged/full models with no adapter
+# config (~10% param yield), so they are intentionally dropped.
 SEARCH_QUERIES = [
-    ("library:peft",   {"filter": "peft"}),
-    ("tag:lora",       {"filter": "lora"}),
-    ("tag:qlora",      {"filter": "qlora"}),
-    ("tag:dora",       {"filter": "dora"}),
-    ("tag:adapter",    {"filter": "adapter"}),
-    ("search:lora",    {"search": "lora"}),
-    ("search:qlora",   {"search": "qlora"}),
+    ("library:peft", {"filter": "peft"}),
 ]
 
 
@@ -226,10 +228,18 @@ def collect_candidates(api: HfApi, conn) -> int:
     for label, kwargs in SEARCH_QUERIES:
         try:
             models = api.list_models(
-                sort="downloads", direction=-1, limit=SEARCH_LIMIT, **kwargs,
+                sort="downloads", direction=-1,
+                limit=(SEARCH_LIMIT or None),  # 0 -> None -> full pagination
+                **kwargs,
             )
             count = 0
             for model in models:
+                # listing is sorted by downloads desc: once below the floor the
+                # rest are too, so stop paginating this query -- bounds a full
+                # sweep to the models actually worth ingesting.
+                dl = getattr(model, "downloads", None)
+                if dl is not None and dl < MIN_DOWNLOADS:
+                    break
                 record_discovery(conn, model.id, label)
                 count += 1
             logger.info("hf_search '%s' -> %d models", label, count)
@@ -252,13 +262,14 @@ def ingest_pending(api: HfApi, conn) -> tuple[int, int]:
     Fetch full metadata for discovered models and upsert them. Stops once
     TARGET_COUNT new models have been written. Returns (written, skipped).
     """
-    pending = fetch_pending(conn, TARGET_COUNT * 3)  # over-fetch; many get skipped
-    logger.info("Ingesting up to %d LoRA models from %d pending candidates",
-                TARGET_COUNT, len(pending))
+    unbounded = TARGET_COUNT <= 0
+    pending = fetch_pending(conn, 10_000_000 if unbounded else TARGET_COUNT * 3)
+    logger.info("Ingesting %s LoRA models from %d pending candidates",
+                "all pending" if unbounded else f"up to {TARGET_COUNT}", len(pending))
 
     written = skipped = 0
     for model_id in pending:
-        if written >= TARGET_COUNT:
+        if not unbounded and written >= TARGET_COUNT:
             break
         try:
             model = api.model_info(model_id)
