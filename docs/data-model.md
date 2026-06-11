@@ -58,12 +58,16 @@ Replicated as-is into the DuckDB warehouse's `BRONZE` schema by
 Each signal is mapped to its population percentile (0–1 via `percent_rank()`),
 then blended:
 
-    0.3·downloads_pct + 0.2·likes_pct + 0.5·fan_out_pct
+    0.55·downloads_pct + 0.35·likes_pct + 0.10·fan_out_pct
 
-`fan_out_pct` carries the most weight because fine-tune fan-out — how many other
-models declare this one as their `base_model` (from `hf_model_tree`) — is the
-hardest signal to game. Percentile-normalising keeps every signal on the same
-[0,1] scale, so the weights mean what they say (#6).
+Downloads carries the most weight — it is the only signal that varies across
+nearly the whole corpus. Fine-tune fan-out — how many other models declare this
+one as their `base_model` (from `hf_model_tree`, which ignores self-referential
+rows, #64) — is the hardest signal to game when present, but it is structurally
+~0 for adapters (1.4% of the corpus, #63), so it contributes only a small
+bonus. Percentile-normalising keeps every signal on the same [0,1] scale; the
+per-signal percentiles are exposed as `downloads_pct` / `likes_pct` /
+`fan_out_pct` columns (#6).
 
 ### Four-quadrant practice stats (`lora_practice_stats`)
 
@@ -79,7 +83,8 @@ the per-parameter medians of those two quantities:
 | **rare** (prevalence < median) | **hidden insight** | dead end |
 
 `sample_ok` flags buckets backed by at least 3 models, so a `rare + works` cell
-with a single model reads as noise rather than a hidden gem.
+with a single model reads as noise rather than a hidden gem. `score_lift` — the
+bucket's mean score minus the parameter's pooled mean — gives the effect size.
 
 The `rare + works` quadrant is the core product output. It is built via
 Variant D (HF-side params joined to outcomes on `model_id`), so no GitHub↔HF

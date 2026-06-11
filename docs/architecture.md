@@ -13,7 +13,8 @@ exposes the resulting marts for analysis and a (planned) web dashboard.
 | Orchestration | Apache Airflow (LocalExecutor) | The three DAGs below |
 | Bronze | MySQL 8 | Raw collected entities + Airflow metadata |
 | Warehouse | DuckDB + dbt | Staging → Silver → Gold marts (single `ML_UNDERGROUND.duckdb` file, path via `DUCKDB_PATH`) |
-| Vector DB | Qdrant | README / model-card embeddings for semantic search |
+| Vector DB | Qdrant | README / model-card embeddings (payload carries text excerpts for RAG) |
+| ML access | `ml/` (`data.py`, `scoring.py`, `practice_stats.py`, `rag/`) | DuckDB readers, pandas mirrors of the gold marts, RAG search + grounded answers |
 | Quality | Great Expectations | Bronze validation gate |
 | Monitoring | Prometheus + Grafana + custom exporter | Pipeline health |
 | Serving (planned) | FastAPI + dashboard | See [api-contract.md](api-contract.md) |
@@ -87,3 +88,7 @@ See [data-model.md](data-model.md) for the table-level detail.
 - **Layered extraction.** Params are extracted with a source priority of
   AST > JSON > YAML > regex > LLM; the LLM fallback (#7) runs as the
   `extract_llm` task and no-ops when `ANTHROPIC_API_KEY` is absent.
+- **Untrusted retrieved context.** RAG answers ground on the README/card text
+  stored in the Qdrant payload — public-internet data, so it is length-capped,
+  scrubbed of instruction-like patterns, and pinned inside
+  `<retrieved_context>` delimiters as data-not-instructions (#52).
