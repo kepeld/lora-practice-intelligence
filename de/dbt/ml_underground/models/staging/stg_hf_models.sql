@@ -8,7 +8,9 @@ select
     downloads,
     likes,
     tags,
-    to_timestamp(created_at)     as created_at,
-    to_timestamp(last_modified)  as last_modified,
-    to_timestamp(ingested_at)    as ingested_at
+    is_lora_relevant,
+    collection_source,
+    created_at::timestamp     as created_at,
+    last_modified::timestamp  as last_modified,
+    ingested_at::timestamp    as ingested_at
 from {{ source('bronze', 'huggingface_models_bronze') }}

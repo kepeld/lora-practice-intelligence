@@ -16,9 +16,13 @@
 | `hf_models_lora_params` | Per-HF-model LoRA params (Variant D) |
 | `github_repos_embedded`, `hf_models_embedded` | Qdrant embedding bookkeeping |
 
-Replicated as-is to Snowflake `BRONZE` by `load_to_snowflake.py`.
+Replicated as-is into the DuckDB warehouse's `BRONZE` schema by
+`load_to_duckdb.py`. The warehouse is a single DuckDB file (catalog
+`ML_UNDERGROUND`) at `/opt/airflow/dbt/ML_UNDERGROUND.duckdb` in the container
+(locally `de/dbt/ml_underground/ML_UNDERGROUND.duckdb`), resolved via the
+`DUCKDB_PATH` env var. (Migrated from Snowflake to DuckDB.)
 
-## Silver — Snowflake (dbt tables)
+## Silver — DuckDB (dbt tables)
 
 | Model | Grain | Notes |
 | --- | --- | --- |
@@ -29,7 +33,7 @@ Replicated as-is to Snowflake `BRONZE` by `load_to_snowflake.py`.
 | `hf_models_lora_params` | one row per HF model | Variant D params |
 | `repos_needing_llm_extraction` | one row per repo | target list for #7 |
 
-## Gold — Snowflake (dbt tables)
+## Gold — DuckDB (dbt tables)
 
 | Model | Grain | Notes |
 | --- | --- | --- |

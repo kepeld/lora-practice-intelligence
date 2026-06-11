@@ -5,8 +5,9 @@
 -- (huggingface_models_bronze) without any API calls -- purely from text
 -- already stored (READMEs, model cards, owner/author names).
 --
--- This is a new BRONZE source, replicated to Snowflake by load_to_snowflake
--- and refined into SILVER by the dbt model silver_github_hf_links.
+-- This is a new BRONZE source, replicated into the DuckDB warehouse's BRONZE
+-- schema by load_to_duckdb and refined into SILVER by the dbt model
+-- silver_github_hf_links.
 --
 -- repo_full_name holds the GitHub "owner/name" string (what regex matches and
 -- what same_username/fuzzy_name compare on) -- NOT the numeric repo_id.

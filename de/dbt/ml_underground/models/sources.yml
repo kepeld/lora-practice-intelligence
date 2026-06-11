@@ -2,7 +2,7 @@ version: 2
 
 sources:
   - name: bronze
-    description: "MySQL bronze tables replicated into Snowflake by load_to_snowflake.py."
+    description: "MySQL bronze tables replicated into DuckDB by load_to_duckdb.py."
     database: ML_UNDERGROUND
     schema: BRONZE
     tables:

@@ -16,8 +16,7 @@ dedup as (
         repo_full_name,
         model_id,
         max(confidence)                                              as best_confidence,
-        listagg(distinct link_type, ',')
-            within group (order by link_type)                        as link_types,
+        string_agg(distinct link_type, ',' order by link_type)       as link_types,
         max(created_at)                                              as last_linked_at
     from raw_links
     group by repo_full_name, model_id

@@ -11,8 +11,8 @@ hf_model_tree) without re-running the warehouse.
 
 Each signal is mapped to its percentile (PERCENT_RANK: (rank-1)/(n-1) in [0,1])
 then blended with WEIGHTS. See the dbt model header for the selection-bias
-caveat (Risk 3). Column lookup is case-insensitive (Snowflake returns
-upper-case names).
+caveat (Risk 3). Column lookup is case-insensitive (DuckDB is case-insensitive
+for unquoted identifiers).
 """
 
 from __future__ import annotations

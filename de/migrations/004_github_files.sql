@@ -8,7 +8,7 @@
 -- file_sha is the GitHub blob SHA. A re-run compares the tree's current SHA
 -- against the stored one and only re-fetches changed files (SHA caching).
 --
--- New BRONZE source: replicated to Snowflake by load_to_snowflake.
+-- New BRONZE source: replicated to DuckDB by load_to_duckdb.
 
 CREATE TABLE IF NOT EXISTS github_files (
     file_id         BIGINT AUTO_INCREMENT PRIMARY KEY,

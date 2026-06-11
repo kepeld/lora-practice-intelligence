@@ -1,7 +1,7 @@
 # ML Underground API — contract v1 (proposed)
 
 > **Status: not implemented yet.** This is a *proposed* contract derived from
-> the live warehouse schema (Snowflake `GOLD`/`SILVER`) and the project spec.
+> the live warehouse schema (DuckDB `GOLD`/`SILVER`) and the project spec.
 > The frontend builds stubs against it; the future FastAPI app is implemented
 > to match these exact names. Adjust here first, code second.
 

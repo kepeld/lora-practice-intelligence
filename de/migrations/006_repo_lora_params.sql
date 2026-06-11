@@ -6,7 +6,8 @@
 -- column-wise.
 --
 -- New BRONZE source in MySQL: dbt builds gold.repo_lora_params on top of it
--- in Snowflake (the gold schema is built only by dbt, per the medallion rule).
+-- in the DuckDB warehouse (the gold schema is built only by dbt, per the
+-- medallion rule).
 --
 -- Naming: column "rank" is a SQL reserved word in many dialects; using
 -- "rank_value" avoids needing to quote it everywhere.

@@ -4,11 +4,11 @@ RUN pip install pymysql mysql-connector-python requests python-dotenv huggingfac
 # Pre-download the embedding model so the embed_repos task runs offline.
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 
-# Isolated venv for dbt + the Snowflake loader — keeps their deps off Airflow.
+# Isolated venv for dbt + the DuckDB loader — keeps their deps off Airflow.
 # PIP_USER=false: the airflow image defaults pip to --user, which breaks venv installs.
 RUN python -m venv /home/airflow/dbt-venv && \
     PIP_USER=false /home/airflow/dbt-venv/bin/pip install --no-cache-dir \
-        dbt-snowflake snowflake-connector-python[pandas] mysql-connector-python
+        'dbt-duckdb~=1.8.0' 'duckdb==1.0.0' mysql-connector-python pandas
 
 # build-essential: Great Expectations pulls backports.zoneinfo on Python 3.8,
 # which has no aarch64 wheel and must be compiled from source.
