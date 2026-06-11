@@ -17,29 +17,46 @@ from __future__ import annotations
 DEFAULT_PARAMS = (
     "rank_value", "lora_alpha", "optimizer", "scheduler", "batch_size",
     "num_train_epochs", "gradient_accumulation_steps", "lora_dropout", "bf16",
+    "learning_rate", "lora_bias", "warmup_steps", "gradient_checkpointing",
+    "fp16",
 )
 MIN_SAMPLE = 3
 
 
-def _score_vs_base(models):
-    """Per-model outperformance vs same-base peers (global mean when base unknown)."""
-    global_mean = models["composite_success_score"].mean()
-    peer = (
-        models.groupby("base_model")["composite_success_score"]
-        .transform("mean")
-        .fillna(global_mean)
+def _score_vs_base(models, reference_models=None):
+    """Per-model outperformance vs same-base peers (global mean when base unknown).
+
+    Peer/global means come from `reference_models` when given; by default they
+    are computed from `models` itself. NOTE: the dbt model derives them from the
+    FULL repo_lora_outcomes mart — passing a subset (e.g. only models with
+    extracted params) without `reference_models` yields a different reference
+    population, and possibly different quadrants, than the warehouse (#53).
+    Pass the full outcomes frame as `reference_models` for warehouse parity.
+    """
+    reference = models if reference_models is None else reference_models
+    global_mean = reference["composite_success_score"].mean()
+    base_means = (
+        reference.dropna(subset=["base_model"])
+        .groupby("base_model")["composite_success_score"]
+        .mean()
     )
+    # bases absent from the reference (and NULL bases) fall back to the global
+    # mean, matching the dbt coalesce(base_avg, global).
+    peer = models["base_model"].map(base_means).fillna(global_mean)
     return models["composite_success_score"] - peer
 
 
-def practice_stats(models, param_cols=DEFAULT_PARAMS, min_sample=MIN_SAMPLE):
+def practice_stats(models, param_cols=DEFAULT_PARAMS, min_sample=MIN_SAMPLE,
+                   reference_models=None):
     """Compute the quadrant table from a model-level DataFrame.
 
     `models` needs columns: model_id, base_model, composite_success_score, and
-    the parameter columns. Returns one row per (param_name, param_value).
+    the parameter columns. `reference_models` (optional) is the population used
+    for the base-peer means — pass the full outcomes mart to match dbt (#53).
+    Returns one row per (param_name, param_value).
     """
     df = models.copy()
-    df["score_vs_base"] = _score_vs_base(df)
+    df["score_vs_base"] = _score_vs_base(df, reference_models)
 
     present = [c for c in param_cols if c in df.columns]
     long = df.melt(
