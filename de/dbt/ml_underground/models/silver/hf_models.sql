@@ -8,8 +8,10 @@ select
     downloads,
     likes,
     tags,
-    array_size(try_parse_json(tags)) as tag_count,
+    json_array_length(try_cast(tags as json)) as tag_count,
     base_model is not null as is_fine_tune,
+    coalesce(is_lora_relevant, 0) = 1 as is_lora_relevant,
+    collection_source,
     created_at,
     last_modified
 from {{ ref('stg_hf_models') }}

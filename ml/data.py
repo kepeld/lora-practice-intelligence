@@ -1,8 +1,9 @@
 """No-SQL data access for the ML/RAG side: each call returns a pandas DataFrame
-from a curated Snowflake mart (friendly names in TABLES below).
+from a curated mart in the DuckDB warehouse file (friendly names in TABLES below).
 
-Setup: pip install "snowflake-connector-python[pandas]" pandas pyarrow, and put
-Snowflake creds in .env (role ML_DEV).
+Setup: pip install duckdb pandas pyarrow, and point DUCKDB_PATH at the warehouse
+file (default /opt/airflow/dbt/ML_UNDERGROUND.duckdb; locally under
+de/dbt/ml_underground/). Opened read-only — safe to read between pipeline runs.
 
     from ml.data import practice_stats, repos_needing_llm
     df = practice_stats()       # quadrants (#10)
@@ -12,7 +13,7 @@ Snowflake creds in .env (role ML_DEV).
 
 import os
 
-# friendly name -> fully-qualified Snowflake table (read-only marts)
+# friendly name -> fully-qualified mart (schema.table in the DuckDB warehouse)
 TABLES = {
     "outcomes":               "GOLD.REPO_LORA_OUTCOMES",        # success score per HF model (#6)
     "practice_stats":         "GOLD.LORA_PRACTICE_STATS",       # common/rare x works/fails (#10)
@@ -26,19 +27,13 @@ TABLES = {
     "github_files":           "BRONZE.GITHUB_FILES",            # #7 raw file content
 }
 
-_DATABASE = os.getenv("SNOWFLAKE_DATABASE", "ML_UNDERGROUND")
+_DATABASE = "ML_UNDERGROUND"   # DuckDB catalog (the file stem); see profiles.yml
+_DUCKDB_PATH = os.getenv("DUCKDB_PATH", "/opt/airflow/dbt/ML_UNDERGROUND.duckdb")
 
 
 def _connect():
-    import snowflake.connector
-    return snowflake.connector.connect(
-        account=os.environ["SNOWFLAKE_ACCOUNT"],
-        user=os.environ["SNOWFLAKE_USER"],
-        password=os.environ["SNOWFLAKE_PASSWORD"],
-        role=os.getenv("SNOWFLAKE_ROLE", "ML_DEV"),
-        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "ML_UNDERGROUND_WH"),
-        database=_DATABASE,
-    )
+    import duckdb
+    return duckdb.connect(_DUCKDB_PATH, read_only=True)
 
 
 def load(name, limit=None):
@@ -50,9 +45,7 @@ def load(name, limit=None):
         sql += f" LIMIT {int(limit)}"
     con = _connect()
     try:
-        cur = con.cursor()
-        cur.execute(sql)
-        return cur.fetch_pandas_all()
+        return con.execute(sql).df()
     finally:
         con.close()
 

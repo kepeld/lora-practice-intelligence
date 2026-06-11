@@ -2,12 +2,8 @@ ml_underground:
   target: prod
   outputs:
     prod:
-      type: snowflake
-      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
-      user: "{{ env_var('SNOWFLAKE_USER') }}"
-      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
-      role: "{{ env_var('SNOWFLAKE_ROLE', 'ACCOUNTADMIN') }}"
-      database: "{{ env_var('SNOWFLAKE_DATABASE', 'ML_UNDERGROUND') }}"
-      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'ML_UNDERGROUND_WH') }}"
-      schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'PUBLIC') }}"
+      type: duckdb
+      # single warehouse file shared by load_to_duckdb.py, dbt and ml/data.py;
+      # catalog name = file stem (ML_UNDERGROUND), matching sources.yml.
+      path: "{{ env_var('DUCKDB_PATH', '/opt/airflow/dbt/ML_UNDERGROUND.duckdb') }}"
       threads: 4

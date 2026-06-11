@@ -21,7 +21,7 @@ spread.
               (repos, files,         ┌─────────────┐ (HF models)
                readmes)              │ silver +    │
                     │                │ gold marts  │
-                    └──► Snowflake ──┤ on Snowflake│──► success score,
+                    └──► DuckDB ─────┤ in DuckDB   │──► success score,
                                      │ via dbt     │     rare-but-works,
                                      └─────────────┘     practice index
 ```
@@ -38,7 +38,7 @@ ua-palantir/
 │   │       ├── corpus_backfill_dag.py       # Weekly LoRA corpus backfill
 │   │       └── lora_extraction_dag.py       # Manual LoRA hyperparameter extract
 │   ├── ingestion/                       # Collectors / enricher / linker / extractor
-│   ├── dbt/ml_underground/              # Staging → Silver → Gold (Snowflake)
+│   ├── dbt/ml_underground/              # Staging → Silver → Gold (DuckDB)
 │   ├── quality/                         # Great Expectations bronze suites
 │   ├── migrations/                      # MySQL schema migrations (001..007)
 │   ├── mysql/init.sql                   # Bootstrap schema
@@ -58,15 +58,17 @@ ua-palantir/
 - Docker Desktop
 - Python 3.11+ via `pyenv`
 - `uv` for package management
-- A GitHub token (`public_repo` scope), a Snowflake account, and the
-  HuggingFace Hub anonymous client (no token needed).
+- A GitHub token (`public_repo` scope) and the HuggingFace Hub anonymous
+  client (no token needed). The warehouse is a local DuckDB file — no SaaS
+  account or credentials.
 
 ### Configure secrets
 
 Copy `.env.example` to `.env` and fill in:
 - `GITHUB_TOKEN` — GitHub personal access token
-- `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD`, `SNOWFLAKE_DATABASE`,
-  `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_ROLE`
+- `DUCKDB_PATH` — path to the DuckDB warehouse file (default
+  `/opt/airflow/dbt/ML_UNDERGROUND.duckdb` in the container,
+  `de/dbt/ml_underground/ML_UNDERGROUND.duckdb` locally)
 
 
 ### Start the stack
@@ -94,10 +96,10 @@ docker compose --profile de --profile monitor up -d
 
 Runs every hour, 7 tasks. The warehouse path runs in order, with the two
 embedding tasks hanging off `hf_ingestion` as a **non-blocking side branch** —
-a transient embedding failure no longer cascades into Snowflake / dbt:
+a transient embedding failure no longer cascades into DuckDB / dbt:
 
 ```
-repo_enricher → hf_ingestion → data_quality_check → load_to_snowflake → dbt_run
+repo_enricher → hf_ingestion → data_quality_check → load_to_duckdb → dbt_run
                      └─► embed_repos → embed_hf_models   (side branch)
 ```
 
@@ -105,7 +107,7 @@ repo_enricher → hf_ingestion → data_quality_check → load_to_snowflake → 
    backlog via the GitHub API
 2. `hf_ingestion` — newest HuggingFace LoRA models + cards (retry-hardened)
 3. `data_quality_check` — Great Expectations validation of bronze
-4. `load_to_snowflake` — replicate MySQL bronze → Snowflake BRONZE
+4. `load_to_duckdb` — replicate MySQL bronze → DuckDB BRONZE
 5. `dbt_run` — build Silver / Gold marts
 6. `embed_repos` — repo READMEs → Qdrant `github_repos` *(US-5.3, side branch)*
 7. `embed_hf_models` — HF model cards → Qdrant `huggingface_models` *(US-5.3, side branch)*
@@ -150,11 +152,15 @@ cards, independent output) and is not sequenced between `extract_raw` and
 | `github_hf_links`           | GitHub repo ↔ HF model links + confidence    |
 | `github_files`              | Training scripts + config files per repo     |
 
-### Snowflake medallion
+### DuckDB medallion
+
+The warehouse is a single DuckDB file (catalog `ML_UNDERGROUND`, at
+`DUCKDB_PATH`; migrated from Snowflake). The medallion schemas
+`BRONZE`/`STAGING`/`SILVER`/`GOLD` live inside it.
 
 | Schema    | Built by                | Highlights                                                          |
 | --------- | ----------------------- | ------------------------------------------------------------------- |
-| `BRONZE`  | `load_to_snowflake.py`  | Replica of MySQL bronze                                             |
+| `BRONZE`  | `load_to_duckdb.py`     | Replica of MySQL bronze                                             |
 | `STAGING` | dbt (views)             | `stg_github_repos`, `stg_hf_models`                                 |
 | `SILVER`  | dbt (tables)            | `repos`, `hf_models`, `hf_models_lora_params`, `github_hf_links`, `lora_configs_raw`, `repos_needing_llm_extraction` |
 | `GOLD`    | dbt (tables)            | `repo_lora_params`, `repo_lora_outcomes`, `hf_model_tree`, `lora_practice_stats` |

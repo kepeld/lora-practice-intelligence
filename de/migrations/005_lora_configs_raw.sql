@@ -5,8 +5,8 @@
 -- A repo's final value is picked in gold.repo_lora_params via a priority
 -- merge (AST > JSON > YAML > regex > LLM).
 --
--- New BRONZE source: replicated to Snowflake by load_to_snowflake; dbt builds
--- the silver.lora_configs_raw model on top of it.
+-- New BRONZE source: replicated to the DuckDB BRONZE schema by load_to_duckdb;
+-- dbt builds the silver.lora_configs_raw model on top of it.
 --
 -- INDEX on file_id (not FK): keeps SHA-cache rebuilds of github_files cheap
 -- and avoids cascade pain. Referential integrity is checked by a GE

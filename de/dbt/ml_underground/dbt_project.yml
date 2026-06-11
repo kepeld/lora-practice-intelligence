@@ -10,9 +10,9 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
-# Medallion layers, each in its own Snowflake schema.
+# Medallion layers, each in its own DuckDB schema.
 # staging = views; silver/gold = materialised tables. (bronze schema is
-# populated by load_to_snowflake.py, not dbt.)
+# populated by load_to_duckdb.py, not dbt.)
 models:
   ml_underground:
     staging:

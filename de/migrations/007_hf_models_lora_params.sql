@@ -9,7 +9,7 @@
 -- changes. DOUBLE for learning_rate/lora_dropout (scientific notation),
 -- VARCHAR(64) for lora_bias (matches widened col on repo_lora_params).
 --
--- Replicated to Snowflake by load_to_snowflake; dbt builds
+-- Replicated to DuckDB by load_to_duckdb; dbt builds
 -- silver.hf_models_lora_params on top.
 
 CREATE TABLE IF NOT EXISTS hf_models_lora_params (

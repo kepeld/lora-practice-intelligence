@@ -2,7 +2,7 @@
 
 End-to-end, ML Underground collects LoRA training code from GitHub and LoRA
 models from HuggingFace, lands them in a MySQL bronze layer, promotes them
-through a Snowflake medallion (Bronze → Staging → Silver → Gold) with dbt, and
+through a DuckDB medallion (Bronze → Staging → Silver → Gold) with dbt, and
 exposes the resulting marts for analysis and a (planned) web dashboard.
 
 ## Components
@@ -12,7 +12,7 @@ exposes the resulting marts for analysis and a (planned) web dashboard.
 | Sources | GitHub Search API, GitHub REST API, HuggingFace Hub | Discover + enrich LoRA repos and models |
 | Orchestration | Apache Airflow (LocalExecutor) | The three DAGs below |
 | Bronze | MySQL 8 | Raw collected entities + Airflow metadata |
-| Warehouse | Snowflake + dbt | Staging → Silver → Gold marts |
+| Warehouse | DuckDB + dbt | Staging → Silver → Gold marts (single `ML_UNDERGROUND.duckdb` file, path via `DUCKDB_PATH`) |
 | Vector DB | Qdrant | README / model-card embeddings for semantic search |
 | Quality | Great Expectations | Bronze validation gate |
 | Monitoring | Prometheus + Grafana + custom exporter | Pipeline health |
@@ -22,7 +22,7 @@ exposes the resulting marts for analysis and a (planned) web dashboard.
 
 ```
 GitHub  (collector → enricher → files) ─┐
-                                        ├─► MySQL bronze ─► Snowflake (dbt) ─► Gold marts
+                                        ├─► MySQL bronze ─► DuckDB (dbt) ─► Gold marts
 HuggingFace (collector → cards) ────────┘             └─► Qdrant (embeddings)
 ```
 
@@ -32,10 +32,10 @@ HuggingFace (collector → cards) ────────┘             └─
 
 The warehouse path runs in order; the two embedding tasks hang off
 `hf_ingestion` as a non-blocking side branch, so a transient embedding failure
-does not cascade into Snowflake / dbt.
+does not cascade into DuckDB / dbt.
 
 ```
-repo_enricher → hf_ingestion → data_quality_check → load_to_snowflake → dbt_run
+repo_enricher → hf_ingestion → data_quality_check → load_to_duckdb → dbt_run
                      └─► embed_repos → embed_hf_models        (side branch)
 ```
 
@@ -55,11 +55,17 @@ extract_raw → extract_llm → merge_to_gold   (chained; extract_llm is the #7 
 extract_hf_cards                            (independent branch: HF adapter_config.json, confidence 1.0)
 ```
 
-## Medallion layers (Snowflake)
+## Medallion layers (DuckDB)
+
+The medallion lives in a single DuckDB file (catalog `ML_UNDERGROUND`,
+default `/opt/airflow/dbt/ML_UNDERGROUND.duckdb` in the container, locally
+`de/dbt/ml_underground/ML_UNDERGROUND.duckdb`, path via `DUCKDB_PATH`). dbt
+uses the `dbt-duckdb` adapter. The schemas below are unchanged from the prior
+Snowflake setup — only the warehouse engine changed.
 
 | Schema | Built by | Contents |
 | --- | --- | --- |
-| BRONZE | `load_to_snowflake.py` | Replica of MySQL bronze |
+| BRONZE | `load_to_duckdb.py` | Replica of MySQL bronze |
 | STAGING | dbt (views) | `stg_github_repos`, `stg_hf_models` |
 | SILVER | dbt (tables) | Conformed entities + per-source extractions |
 | GOLD | dbt (tables) | Params, outcomes, model tree, practice stats |

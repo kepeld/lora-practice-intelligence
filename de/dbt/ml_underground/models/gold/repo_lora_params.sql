@@ -1,7 +1,7 @@
 -- Per-repo LoRA hyperparameters after the priority merge (US-3.1, US-3.2).
--- Built by the lora_extraction_dag in MySQL and replicated to Snowflake
--- BRONZE; this model just promotes it to the gold layer and joins repo-level
--- enrichment context for analyst convenience.
+-- Built by the lora_extraction_dag in MySQL and replicated to the DuckDB
+-- BRONZE schema; this model just promotes it to the gold layer and joins
+-- repo-level enrichment context for analyst convenience.
 {{ config(materialized='table') }}
 
 select

@@ -5,8 +5,8 @@ Orchestrates the hourly LoRA-corpus refresh:
   1. repo_enricher     — enrich discovered LoRA repos (lora_search_discovery) via GitHub API
   2. hf_ingestion      — fetch new HuggingFace LoRA models + model cards
   3. data_quality      — Great Expectations validation of the bronze tables
-  4. load_to_snowflake — replicate MySQL bronze tables into Snowflake
-  5. dbt_run           — build dbt Silver/Gold models on Snowflake
+  4. load_to_duckdb    — replicate MySQL bronze tables into the DuckDB warehouse
+  5. dbt_run           — build dbt Silver/Gold models in DuckDB
   + embed_repos / embed_hf_models — embed READMEs / model cards into Qdrant (RAG);
     a non-blocking side branch off hf_ingestion.
 
@@ -37,7 +37,7 @@ default_args = {
 with DAG(
     dag_id="ml_underground_pipeline",
     default_args=default_args,
-    description="Hourly LoRA-corpus refresh: enrich → HF ingest → quality → Snowflake → dbt",
+    description="Hourly LoRA-corpus refresh: enrich → HF ingest → quality → DuckDB → dbt",
     schedule_interval="0 * * * *",  # every hour at :00
     start_date=days_ago(1),
     catchup=False,
@@ -167,6 +167,9 @@ with DAG(
                 tree = api_get(
                     f"/repos/{repo_name}/git/trees/{default_branch}?recursive=1"
                 )
+                if tree and tree.get("truncated"):
+                    print(f"repo_enricher: {repo_name} git tree truncated -- "
+                          "has_tests/has_ci/dep may be incomplete")
                 root_files = set()
                 for entry in (tree or {}).get("tree", []):
                     path = entry.get("path", "")
@@ -398,7 +401,7 @@ with DAG(
         QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
         COLLECTION = "github_repos"
         MODEL_NAME = "all-MiniLM-L6-v2"
-        BATCH_SIZE = 100
+        BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "100"))
 
         conn = mysql.connector.connect(
             host=MYSQL_HOST, user=MYSQL_USER,
@@ -414,8 +417,10 @@ with DAG(
             LEFT JOIN github_repos_embedded emb ON e.repo_id = emb.repo_id
             WHERE e.readme_content IS NOT NULL
               AND e.enrichment_status = 'ok'
-              AND emb.repo_id IS NULL
-            ORDER BY e.enriched_at
+              -- re-embed when the README changed since the last embed, not only
+              -- first-time rows, so Qdrant vectors don't go permanently stale.
+              AND (emb.repo_id IS NULL OR e.enriched_at > emb.embedded_at)
+            ORDER BY e.enriched_at DESC
             LIMIT %s
         """, (BATCH_SIZE,))
         repos = cursor.fetchall()
@@ -512,7 +517,7 @@ with DAG(
         QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
         COLLECTION = "huggingface_models"
         MODEL_NAME = "all-MiniLM-L6-v2"
-        BATCH_SIZE = 100
+        BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "100"))
 
         conn = mysql.connector.connect(
             host=MYSQL_HOST, user=MYSQL_USER,
@@ -529,8 +534,10 @@ with DAG(
             LEFT JOIN hf_models_embedded emb ON m.model_id = emb.model_id
             WHERE m.card_content IS NOT NULL
               AND m.is_lora_relevant = TRUE
-              AND emb.model_id IS NULL
-            ORDER BY m.created_at
+              -- re-embed updated cards; newest-first so fresh models (matching
+              -- newest-first ingestion) are never starved by the batch cap.
+              AND (emb.model_id IS NULL OR m.last_modified > emb.embedded_at)
+            ORDER BY m.created_at DESC
             LIMIT %s
         """, (BATCH_SIZE,))
         models = cursor.fetchall()
@@ -603,9 +610,9 @@ with DAG(
         bash_command="/home/airflow/ge-venv/bin/python /opt/airflow/quality/ge_validate.py",
     )
 
-    task_load_snowflake = BashOperator(
-        task_id="load_to_snowflake",
-        bash_command="/home/airflow/dbt-venv/bin/python /opt/airflow/dbt/load_to_snowflake.py",
+    task_load_duckdb = BashOperator(
+        task_id="load_to_duckdb",
+        bash_command="/home/airflow/dbt-venv/bin/python /opt/airflow/dbt/load_to_duckdb.py",
     )
 
     task_dbt_run = BashOperator(
@@ -617,7 +624,7 @@ with DAG(
     )
 
     # Embeddings (Qdrant/RAG) hang off hf_ingestion as a NON-BLOCKING side branch, so a
-    # transient embedding failure no longer cascades into the Snowflake/dbt rebuild.
+    # transient embedding failure no longer cascades into the DuckDB/dbt rebuild.
     task_enricher >> task_hf_ingestion
-    task_hf_ingestion >> task_data_quality >> task_load_snowflake >> task_dbt_run
+    task_hf_ingestion >> task_data_quality >> task_load_duckdb >> task_dbt_run
     task_hf_ingestion >> task_embed_repos >> task_embed_hf_models

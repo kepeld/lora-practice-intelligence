@@ -10,3 +10,7 @@ node_modules/
 *.log
 .dbt/
 .user.yml
+
+# DuckDB warehouse file — built data, never committed
+*.duckdb
+*.duckdb.wal
