@@ -1,6 +1,7 @@
 # API + dashboard service.
 fastapi>=0.110
 uvicorn[standard]>=0.29
+python-dotenv
 # Pinned to the warehouse writer's version (de/airflow/Dockerfile dbt-venv):
 # DuckDB file format must match between writer and readers.
 duckdb==1.0.0

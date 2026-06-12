@@ -146,7 +146,7 @@ async function openEvidence(param, value) {
     r.data.items.map((m) => `
       <div class="evidence">
         <div class="e-name"><a class="ext-link" target="_blank" rel="noopener"
-          href="https://huggingface.co/${encodeURIComponent(m.model_id)}">${esc(m.model_id)}</a></div>
+          href="https://huggingface.co/${esc(m.model_id)}">${esc(m.model_id)}</a></div>
         <div class="e-meta">score ${score(m.composite_success_score)} ·
           ${compact(m.downloads)} downloads · ${compact(m.likes)} likes ·
           fan-out ${m.fine_tune_fan_out ?? 0}</div>
@@ -243,7 +243,7 @@ async function loadModels(append = false) {
     return `<div class="detail-sub">extracted recipe</div>${paramChips(m.lora_params)}
       <div class="detail-sub">links</div>
       <a class="ext-link" target="_blank" rel="noopener"
-         href="https://huggingface.co/${encodeURIComponent(m.model_id)}">open on HuggingFace</a>`;
+         href="https://huggingface.co/${esc(m.model_id)}">open on HuggingFace</a>`;
   }, 6);
 }
 let modelCache = {};
