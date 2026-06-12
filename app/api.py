@@ -11,6 +11,8 @@ import os
 
 from fastapi import APIRouter, HTTPException, Query
 
+from ml.practice_stats import BOOL_PARAMS, INT_PARAMS, normalize_param_value
+
 from . import db
 
 router = APIRouter(prefix="/api/v1")
@@ -39,6 +41,18 @@ def _order(order: str) -> str:
     if order not in ("asc", "desc"):
         raise HTTPException(422, "order must be 'asc' or 'desc'")
     return order.upper()
+
+
+def _param_match_sql(col: str, alias: str) -> str:
+    """Render a param column the way the stats mart's long_form does (#75), so
+    insight cards and their evidence/repo matches agree. The bronze load
+    promotes int/bool columns to DOUBLE, hence the explicit casts."""
+    ref = f"{alias}.{col}"
+    if col in INT_PARAMS:
+        return f"CAST(CAST({ref} AS INTEGER) AS VARCHAR)"
+    if col in BOOL_PARAMS:
+        return f"CASE WHEN CAST({ref} AS BOOLEAN) THEN 'true' ELSE 'false' END"
+    return f"CAST({ref} AS VARCHAR)"
 
 
 def _check_warehouse():
@@ -122,9 +136,9 @@ def insight_models(param_name: str, param_value: str,
                    o.composite_success_score
             FROM SILVER.HF_MODELS_LORA_PARAMS p
             JOIN GOLD.REPO_LORA_OUTCOMES o USING (model_id)
-            WHERE CAST(p.{param_name} AS VARCHAR) = ?
+            WHERE {_param_match_sql(param_name, 'p')} = ?
             ORDER BY o.composite_success_score DESC NULLS LAST LIMIT ?""",
-        [param_value, limit])
+        [normalize_param_value(param_name, param_value), limit])
     return {"items": rows}
 
 
@@ -230,8 +244,8 @@ def repos(param: str | None = None, value: str | None = None,
         if param not in FILTERABLE_PARAMS:
             raise HTTPException(422, f"unknown parameter {param!r}")
         joins = "JOIN GOLD.REPO_LORA_PARAMS g ON g.repo_full_name = r.repo_name"
-        where.append(f"CAST(g.{param} AS VARCHAR) = ?")
-        params.append(value)
+        where.append(f"{_param_match_sql(param, 'g')} = ?")
+        params.append(normalize_param_value(param, value))
     if language:
         where.append("r.primary_language = ?")
         params.append(language)

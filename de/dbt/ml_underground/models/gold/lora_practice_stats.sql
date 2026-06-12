@@ -63,13 +63,17 @@ model_scores as (
 
 ),
 
--- Long-form: one row per (model, parameter, value).
+-- Long-form: one row per (model, parameter, value). The bronze->DuckDB load
+-- promotes int/bool columns to DOUBLE (pandas NULL promotion), so a plain
+-- ::varchar yields '48.0' / '1.0'; integer-like params go through ::int and
+-- booleans through CASE so param_value reads '48' / 'true' (#75). The API's
+-- evidence matching (app/api.py) renders the same expressions — keep in sync.
 long_form as (
 
-    select model_id, 'rank_value' as param_name, rank_value::varchar as param_value
+    select model_id, 'rank_value' as param_name, rank_value::int::varchar as param_value
     from params where rank_value is not null
     union all
-    select model_id, 'lora_alpha', lora_alpha::varchar
+    select model_id, 'lora_alpha', lora_alpha::int::varchar
     from params where lora_alpha is not null
     union all
     select model_id, 'optimizer', optimizer
@@ -78,19 +82,19 @@ long_form as (
     select model_id, 'scheduler', scheduler
     from params where scheduler is not null
     union all
-    select model_id, 'batch_size', batch_size::varchar
+    select model_id, 'batch_size', batch_size::int::varchar
     from params where batch_size is not null
     union all
-    select model_id, 'num_train_epochs', num_train_epochs::varchar
+    select model_id, 'num_train_epochs', num_train_epochs::int::varchar
     from params where num_train_epochs is not null
     union all
-    select model_id, 'gradient_accumulation_steps', gradient_accumulation_steps::varchar
+    select model_id, 'gradient_accumulation_steps', gradient_accumulation_steps::int::varchar
     from params where gradient_accumulation_steps is not null
     union all
     select model_id, 'lora_dropout', lora_dropout::varchar
     from params where lora_dropout is not null
     union all
-    select model_id, 'bf16', bf16::varchar
+    select model_id, 'bf16', case when bf16::boolean then 'true' else 'false' end
     from params where bf16 is not null
     union all
     select model_id, 'learning_rate', learning_rate::varchar
@@ -99,13 +103,13 @@ long_form as (
     select model_id, 'lora_bias', lora_bias
     from params where lora_bias is not null
     union all
-    select model_id, 'warmup_steps', warmup_steps::varchar
+    select model_id, 'warmup_steps', warmup_steps::int::varchar
     from params where warmup_steps is not null
     union all
-    select model_id, 'gradient_checkpointing', gradient_checkpointing::varchar
+    select model_id, 'gradient_checkpointing', case when gradient_checkpointing::boolean then 'true' else 'false' end
     from params where gradient_checkpointing is not null
     union all
-    select model_id, 'fp16', fp16::varchar
+    select model_id, 'fp16', case when fp16::boolean then 'true' else 'false' end
     from params where fp16 is not null
 
 ),

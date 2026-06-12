@@ -20,7 +20,32 @@ DEFAULT_PARAMS = (
     "learning_rate", "lora_bias", "warmup_steps", "gradient_checkpointing",
     "fp16",
 )
+# Value rendering must match the dbt long_form (#75): the bronze load promotes
+# these to floats, so ints render via int() and booleans as 'true'/'false'.
+# app/api.py keys its SQL matching off the same sets.
+INT_PARAMS = frozenset({
+    "rank_value", "lora_alpha", "batch_size", "num_train_epochs",
+    "gradient_accumulation_steps", "warmup_steps",
+})
+BOOL_PARAMS = frozenset({"bf16", "fp16", "gradient_checkpointing",
+                         "merge_and_unload"})
 MIN_SAMPLE = 3
+
+
+def normalize_param_value(param_name, value) -> str:
+    """Render one param value exactly like the dbt long_form does."""
+    if param_name in BOOL_PARAMS:
+        if isinstance(value, str):
+            return "true" if value.strip().lower() in ("1", "1.0", "true", "yes") \
+                else "false" if value.strip().lower() in ("0", "0.0", "false", "no") \
+                else value
+        return "true" if bool(value) else "false"
+    if param_name in INT_PARAMS:
+        try:
+            return str(int(float(value)))
+        except (TypeError, ValueError):
+            return str(value)
+    return str(value)
 
 
 def _score_vs_base(models, reference_models=None):
@@ -65,7 +90,10 @@ def practice_stats(models, param_cols=DEFAULT_PARAMS, min_sample=MIN_SAMPLE,
         var_name="param_name",
         value_name="param_value",
     ).dropna(subset=["param_value"])
-    long["param_value"] = long["param_value"].astype(str)
+    long["param_value"] = [
+        normalize_param_value(n, v)
+        for n, v in zip(long["param_name"], long["param_value"])
+    ]
 
     buckets = (
         long.groupby(["param_name", "param_value"])
