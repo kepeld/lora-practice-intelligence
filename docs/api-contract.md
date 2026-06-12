@@ -1,9 +1,8 @@
 # ML Underground API — contract v1 (proposed)
 
-> **Status: not implemented yet.** This is a *proposed* contract derived from
-> the live warehouse schema (DuckDB `GOLD`/`SILVER`) and the project spec.
-> The frontend builds stubs against it; the future FastAPI app is implemented
-> to match these exact names. Adjust here first, code second.
+> **Status: implemented** by the `app/` service (`uvicorn app.main:app`),
+> which also serves the dashboard at `/`. This document stays the source of
+> truth: adjust here first, code second.
 
 ## Conventions
 
@@ -102,6 +101,16 @@ Returns an envelope of `PracticeStat`.
 
 > URL-encode the `+` in quadrant values (`rare%2Bworks`) — a raw `+` decodes as
 > a space.
+
+### `GET /api/v1/insights/{param_name}/{param_value}/models`
+
+Evidence drill-down for one insight: the real HF models that use this exact
+parameter value, ordered by `composite_success_score` desc.
+
+Query: `limit` (default 10, max 50).
+
+Returns `{ "items": [ { model_id, base_model, pipeline_tag, library_name,
+downloads, likes, fine_tune_fan_out, composite_success_score } ] }`.
 
 ### `GET /api/v1/repos`
 

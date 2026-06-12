@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "C:/Dima/Education/ua-palantir/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--app-dir", "C:/Dima/Education/ua-palantir", "--host", "127.0.0.1", "--port", "8099"],
+      "port": 8099
+    }
+  ]
+}

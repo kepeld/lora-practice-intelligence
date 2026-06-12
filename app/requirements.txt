@@ -1,0 +1,12 @@
+# API + dashboard service.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+# Pinned to the warehouse writer's version (de/airflow/Dockerfile dbt-venv):
+# DuckDB file format must match between writer and readers.
+duckdb==1.0.0
+
+# /search and /ask (semantic retrieval + RAG). Heavy (torch); keep them if the
+# deployment should serve search, drop them for a marts-only API.
+qdrant-client
+sentence-transformers
+anthropic

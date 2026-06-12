@@ -129,6 +129,31 @@ services:
       - ml-underground
 
   # ---------------------------------------------------------------------------
+  # Profile: app — API + dashboard (FastAPI over the DuckDB marts)
+  # ---------------------------------------------------------------------------
+
+  app:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: app
+    profiles: [app, all]
+    ports:
+      - "8000:8000"
+    environment:
+      DUCKDB_PATH: /warehouse/ML_UNDERGROUND.duckdb
+      QDRANT_HOST: qdrant
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      RAG_MODEL: ${RAG_MODEL:-claude-opus-4-8}
+    volumes:
+      # Read-only view of the warehouse the pipeline writes. DuckDB readers can
+      # briefly block the dbt writer — short-lived API connections keep that
+      # window tiny; a colliding dbt run simply retries next hour.
+      - ./de/dbt/ml_underground:/warehouse:ro
+    networks:
+      - ml-underground
+
+  # ---------------------------------------------------------------------------
   # Profile: monitor — Prometheus + Grafana
   # ---------------------------------------------------------------------------
 

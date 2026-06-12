@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ML Underground — LoRA practice intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <div class="brand">
+      <span class="brand-name">ML Underground</span>
+      <span class="brand-sub">LoRA practice intelligence</span>
+    </div>
+    <nav class="site-nav">
+      <a href="#insights">Insights</a>
+      <a href="#search">Search</a>
+      <a href="#models">Models</a>
+      <a href="#repos">Repos</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div id="global-notice"></div>
+
+  <section class="kpis" id="kpis" aria-label="Corpus summary"></section>
+
+  <section id="insights" class="block">
+    <div class="block-head">
+      <h2>Practice insights</h2>
+      <p class="block-note">Which hyperparameter values are common vs rare — and which correlate
+      with stronger HuggingFace outcomes. Scores are population percentiles in 0–1;
+      the works/fails axis is stratified by base model.</p>
+    </div>
+    <div class="toolbar">
+      <div class="chips" id="quadrant-chips" role="group" aria-label="Quadrant filter">
+        <button class="chip is-active" data-quadrant="">All</button>
+        <button class="chip chip-gem" data-quadrant="rare+works">Hidden gems</button>
+        <button class="chip chip-works" data-quadrant="common+works">Common · works</button>
+        <button class="chip chip-fails" data-quadrant="common+fails">Cargo cult</button>
+        <button class="chip chip-dead" data-quadrant="rare+fails">Dead ends</button>
+      </div>
+      <div class="controls">
+        <select id="param-filter" aria-label="Parameter"></select>
+        <select id="insight-sort" aria-label="Sort">
+          <option value="avg_success_score">by success score</option>
+          <option value="score_lift">by score lift</option>
+          <option value="prevalence">by prevalence</option>
+        </select>
+        <label class="toggle"><input type="checkbox" id="sample-ok" checked>
+          <span>hide low-sample</span></label>
+      </div>
+    </div>
+    <div class="cards" id="insight-cards"></div>
+    <div class="more-row"><button class="btn ghost" id="insights-more" hidden>Show more</button></div>
+  </section>
+
+  <section id="search" class="block">
+    <div class="block-head">
+      <h2>Search the corpus</h2>
+      <p class="block-note">Semantic search over repo READMEs and model cards — or ask a question
+      and get an answer grounded in the retrieved sources.</p>
+    </div>
+    <div class="search-row">
+      <input type="text" id="search-input" placeholder="e.g. 8-bit optimizer for qlora on llama-3"
+             aria-label="Search query">
+      <button class="btn solid" id="search-btn">Search</button>
+      <button class="btn ghost" id="ask-btn">Ask</button>
+    </div>
+    <div id="search-out"></div>
+  </section>
+
+  <section id="models" class="block">
+    <div class="block-head">
+      <h2>Models</h2>
+      <p class="block-note">HuggingFace LoRA models with outcome signals and the composite
+      success score. Click a row for its extracted training recipe.</p>
+    </div>
+    <div class="toolbar">
+      <div class="controls">
+        <select id="model-base" aria-label="Base model"><option value="">all base models</option></select>
+        <select id="model-sort" aria-label="Sort">
+          <option value="composite_success_score">by success score</option>
+          <option value="downloads">by downloads</option>
+          <option value="likes">by likes</option>
+          <option value="fine_tune_fan_out">by fan-out</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table" id="models-table">
+        <thead><tr>
+          <th>model</th><th>base</th><th class="num">downloads</th>
+          <th class="num">likes</th><th class="num">fan-out</th><th class="score-col">score</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="more-row"><button class="btn ghost" id="models-more" hidden>Show more</button></div>
+  </section>
+
+  <section id="repos" class="block">
+    <div class="block-head">
+      <h2>Repositories</h2>
+      <p class="block-note">GitHub repos with extracted LoRA configs. Click a row for the recipe
+      and any linked HuggingFace models.</p>
+    </div>
+    <div class="toolbar">
+      <div class="controls">
+        <input type="text" id="repo-q" placeholder="filter by name or description"
+               aria-label="Filter repos">
+        <select id="repo-lang" aria-label="Language"><option value="">all languages</option></select>
+        <label class="toggle"><input type="checkbox" id="repo-tests">
+          <span>has tests</span></label>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table" id="repos-table">
+        <thead><tr>
+          <th>repository</th><th>language</th><th class="num">stars</th>
+          <th class="num">params</th><th class="num">confidence</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="more-row"><button class="btn ghost" id="repos-more" hidden>Show more</button></div>
+  </section>
+
+</main>
+
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <div id="drawer-title"></div>
+    <button class="drawer-close" id="drawer-close" aria-label="Close">×</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+<div class="drawer-scrim" id="drawer-scrim" hidden></div>
+
+<footer class="site-footer">
+  <div class="wrap">ML Underground — an educational data platform. Correlation, not causation:
+  scores reflect popularity of published models, stratified by base model.</div>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

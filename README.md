@@ -44,11 +44,15 @@ ua-palantir/
 │   ├── mysql/init.sql                   # Bootstrap schema
 │   └── tests/                           # pytest (filters)
 ├── ml/                                  # ML / RAG — prompts, scoring, RAG
+├── app/                                 # FastAPI v1 API + dashboard (app/static)
+│   ├── api.py                           # /api/v1 endpoints over the DuckDB marts
+│   ├── demo_seed.py                     # Small demo warehouse for local dev/tests
+│   └── static/                          # No-build dashboard (HTML/CSS/JS)
 ├── infra/
 │   ├── exporter/                        # Custom Prometheus exporter
 │   ├── grafana/                         # Auto-provisioned dashboards
 │   └── prometheus.yml
-├── docker-compose.yml                   # Local stack (profiles: de, monitor, all)
+├── docker-compose.yml                   # Local stack (profiles: de, app, monitor, all)
 └── README.md
 ```
 
@@ -86,9 +90,28 @@ docker compose --profile de --profile monitor up -d
 | Service     | URL                       | Credentials             |
 | ----------- | ------------------------- | ----------------------- |
 | Airflow     | http://localhost:8081     | admin / admin           |
+| Dashboard   | http://localhost:8000     | —                       |
 | Qdrant      | http://localhost:6333     | —                       |
 | Grafana     | http://localhost:3000     | admin / admin           |
 | Prometheus  | http://localhost:9090     | —                       |
+
+## API + dashboard
+
+`app/` serves the v1 API (see [docs/api-contract.md](docs/api-contract.md)) and
+the dashboard from one FastAPI service. It reads the DuckDB warehouse
+read-only via `DUCKDB_PATH`; `/search` needs Qdrant + the embedding model and
+`/ask` additionally needs `ANTHROPIC_API_KEY` — both degrade to a clear 503
+when absent.
+
+```bash
+# in Docker (with the rest of the stack)
+docker compose --profile app up -d --build
+
+# or straight from the venv
+uv pip install -r requirements-dev.txt
+python -m app.demo_seed        # only if the pipeline hasn't built a warehouse yet
+uvicorn app.main:app --port 8000
+```
 
 ## Pipelines
 
