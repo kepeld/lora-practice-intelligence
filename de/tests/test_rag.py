@@ -156,13 +156,14 @@ def test_build_prompt_wraps_context_in_delimiters():
         < body.index("</retrieved_context>")
 
 
-def test_answer_sets_temperature_and_max_tokens():
+def test_answer_sets_max_tokens_and_omits_temperature():
     q = _FakeQdrant({"github_repos": [_point(0.7, {"repo_name": "a/b"})]})
     anth = _FakeAnthropic(_text_response("ok"))
     answer("q?", client=q, embedder=_FakeEmbedder(), anthropic_client=anth,
            max_tokens=512)
     kwargs = anth.messages.calls[0]
-    assert kwargs["temperature"] == 0.3
+    # current models reject an explicit temperature with a 400 (#78)
+    assert "temperature" not in kwargs
     assert kwargs["max_tokens"] == 512
 
 
