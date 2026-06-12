@@ -79,6 +79,20 @@ def test_insight_evidence_unknown_param_is_422(client):
     assert client.get("/api/v1/insights/evil; DROP/x/models").status_code == 422
 
 
+def test_insight_evidence_boolean_param_accepts_clean_and_legacy(client):
+    clean = client.get("/api/v1/insights/bf16/true/models").json()["items"]
+    legacy = client.get("/api/v1/insights/bf16/1.0/models").json()["items"]
+    assert len(clean) > 0
+    assert clean == legacy
+
+
+def test_insight_evidence_int_param_accepts_legacy_float(client):
+    clean = client.get("/api/v1/insights/rank_value/64/models").json()["items"]
+    legacy = client.get("/api/v1/insights/rank_value/64.0/models").json()["items"]
+    assert [m["model_id"] for m in clean] == [m["model_id"] for m in legacy]
+    assert len(clean) > 0
+
+
 def test_models_envelope_with_nested_params(client):
     body = client.get("/api/v1/models?sort=composite_success_score").json()
     top = body["items"][0]
