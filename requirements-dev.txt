@@ -3,3 +3,10 @@ pytest>=8.0
 pandas>=2.0
 # the lora_config_extractor YAML layer (and its tests) need PyYAML
 PyYAML>=6.0
+# app/ API tests + local `uvicorn app.main:app`. duckdb is unpinned here (the
+# container pins ==1.0.0; newer local readers still open 1.0-format files).
+fastapi>=0.110
+httpx>=0.27
+uvicorn>=0.29
+duckdb>=1.0
+python-dotenv>=1.0

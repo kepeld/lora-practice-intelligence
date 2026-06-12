@@ -14,3 +14,5 @@ node_modules/
 # DuckDB warehouse file — built data, never committed
 *.duckdb
 *.duckdb.wal
+# machine-specific dev launcher (absolute venv paths)
+.claude/launch.json
