@@ -8,6 +8,8 @@ duckdb==1.0.0
 
 # /search and /ask (semantic retrieval + RAG). Heavy (torch); keep them if the
 # deployment should serve search, drop them for a marts-only API.
-qdrant-client
+# qdrant-client pinned <1.12: 1.12 removed client.search(), which the retriever
+# uses — newer versions make /search and /ask 503.
+qdrant-client<1.12
 sentence-transformers
 anthropic

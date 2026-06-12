@@ -14,7 +14,8 @@ pd = pytest.importorskip("pandas")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "ml"))
 
 from practice_stats import (  # noqa: E402
-    DEFAULT_PARAMS, MIN_SAMPLE, _score_vs_base, practice_stats,
+    DEFAULT_PARAMS, MIN_SAMPLE, _score_vs_base, normalize_param_value,
+    practice_stats,
 )
 
 
@@ -137,6 +138,30 @@ def test_practice_stats_passes_reference_through():
     out = practice_stats(models, reference_models=reference)
     assert _cell(out, "optimizer", "good")["avg_score_vs_base"] == round(0.9 - 0.95, 3)
     assert _cell(out, "optimizer", "rare")["avg_score_vs_base"] == round(0.95 - 0.95, 3)
+
+
+def test_normalize_param_value_matches_dbt_rendering():
+    # #75: float-promoted ints/bools must render like the dbt long_form.
+    assert normalize_param_value("rank_value", 64.0) == "64"
+    assert normalize_param_value("rank_value", "64.0") == "64"
+    assert normalize_param_value("bf16", 1.0) == "true"
+    assert normalize_param_value("bf16", "0.0") == "false"
+    assert normalize_param_value("bf16", True) == "true"
+    assert normalize_param_value("lora_dropout", 0.05) == "0.05"
+    assert normalize_param_value("optimizer", "adamw") == "adamw"
+
+
+def test_practice_stats_renders_float_promoted_values_cleanly():
+    df = pd.DataFrame({
+        "model_id": ["a", "b", "c"],
+        "base_model": ["B", "B", "B"],
+        "composite_success_score": [0.5, 0.6, 0.7],
+        "lora_alpha": [48.0, 48.0, 16.0],
+        "fp16": [1.0, 0.0, 1.0],
+    })
+    out = practice_stats(df)
+    assert set(out[out.param_name == "lora_alpha"]["param_value"]) == {"48", "16"}
+    assert set(out[out.param_name == "fp16"]["param_value"]) == {"true", "false"}
 
 
 def test_default_params_match_dbt_long_form():
