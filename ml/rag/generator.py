@@ -115,11 +115,12 @@ def answer(question: str, top_k: int = 5, *,
         anthropic_client = anthropic.Anthropic()
     model = model or os.getenv("RAG_MODEL", DEFAULT_MODEL)
 
+    # No explicit temperature: current models (incl. the opus-4-8 default)
+    # reject the parameter with a 400 (#78); groundedness is enforced by the
+    # system prompt instead.
     response = anthropic_client.messages.create(
         model=model,
         max_tokens=max_tokens,
-        # grounded factual answers — the 1.0 default invites embellishment
-        temperature=0.3,
         system=[{
             "type": "text",
             "text": SYSTEM_PROMPT,

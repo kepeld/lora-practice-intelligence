@@ -133,7 +133,16 @@ def test_repo_detail_linked_models(client):
     assert body["linked_models"][0]["model_id"] == "alice/llama3-finance-lora"
 
 
-def test_search_degrades_to_503(client):
+def test_search_degrades_to_503(client, monkeypatch):
+    # Hermetic: simulate the vector stack being down even when the dev machine
+    # has qdrant-client installed and a live Qdrant running.
+    import ml.rag.retriever as retriever
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("qdrant unreachable (simulated)")
+
+    monkeypatch.setattr(retriever, "search_all", boom)
+    monkeypatch.setattr(retriever, "search", boom)
     res = client.get("/api/v1/search?q=adamw")
     assert res.status_code == 503
     assert "unavailable" in res.json()["detail"]
