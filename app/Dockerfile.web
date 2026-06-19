@@ -1,0 +1,27 @@
+# Public demo image (Render free tier) — dashboard + marts API only.
+#
+# Two differences from app/Dockerfile (the compose / AWS image):
+#  - marts-only deps: no torch / sentence-transformers / anthropic, so /search
+#    and /ask degrade to 503 but the image stays light enough for a 512MB box.
+#  - self-contained data: a small curated demo warehouse is built into the image
+#    at build time, so there is no external data host to manage. Point a deploy
+#    at a hosted real warehouse instead by setting DUCKDB_URL — it is downloaded
+#    over the demo at startup, no rebuild needed (see app/web_entrypoint.sh).
+#
+# Build from the repo root: docker build -f app/Dockerfile.web -t ml-underground-web .
+FROM python:3.11-slim
+
+WORKDIR /srv
+
+# marts-only deps; see app/requirements.txt for why the heavy three are dropped.
+RUN pip install --no-cache-dir \
+    "fastapi>=0.110" "uvicorn[standard]>=0.29" python-dotenv "duckdb==1.0.0"
+
+COPY app /srv/app
+COPY ml /srv/ml
+
+ENV DUCKDB_PATH=/srv/warehouse/ML_UNDERGROUND.duckdb
+RUN mkdir -p /srv/warehouse && python -m app.demo_seed "$DUCKDB_PATH"
+
+EXPOSE 8000
+CMD ["sh", "/srv/app/web_entrypoint.sh"]

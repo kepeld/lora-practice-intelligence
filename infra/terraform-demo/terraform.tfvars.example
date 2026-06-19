@@ -1,0 +1,4 @@
+# All values have sane defaults — copy to terraform.tfvars only to override.
+# aws_region    = "eu-central-1"
+# instance_type = "t3.medium"
+# rag_model     = "claude-haiku-4-5"   # or "claude-opus-4-8" for richer /ask answers

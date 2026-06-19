@@ -1,0 +1,22 @@
+# Render Blueprint — public demo of the ML Underground dashboard + marts API.
+#
+# Free web service: spins down after ~15 min idle and cold-starts (~30-60s) on
+# the next request. Connect the repo in Render (New > Blueprint) and it picks
+# this up; or create a Docker web service by hand pointing at app/Dockerfile.web.
+services:
+  - type: web
+    name: ml-underground
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./app/Dockerfile.web
+    dockerContext: .
+    healthCheckPath: /api/v1/stats/summary
+    autoDeploy: true
+    envVars:
+      - key: DUCKDB_PATH
+        value: /srv/warehouse/ML_UNDERGROUND.duckdb
+      # Uncomment and point at a public warehouse URL (R2 / S3 / GitHub release)
+      # to serve the real corpus instead of the baked demo — no rebuild needed.
+      # - key: DUCKDB_URL
+      #   value: https://...

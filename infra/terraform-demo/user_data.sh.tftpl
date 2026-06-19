@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Serve-only bootstrap: Docker + the repo + the app (FastAPI/torch) + Qdrant,
+# fed the slim warehouse and the embedding snapshots the operator stages in S3.
+set -euo pipefail
+exec > /var/log/user-data.log 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y ca-certificates curl git jq unzip
+
+# AWS CLI v2
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscli.zip
+unzip -q /tmp/awscli.zip -d /tmp
+/tmp/aws/install
+export AWS_DEFAULT_REGION="${aws_region}"
+
+# Docker engine + compose plugin (official repo)
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable" \
+  > /etc/apt/sources.list.d/docker.list
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+usermod -aG docker ubuntu
+
+# Secrets — the instance role provides credentials via IMDS
+GH=$(aws secretsmanager get-secret-value --secret-id "${github_token_secret}" --query SecretString --output text)
+AN=$(aws secretsmanager get-secret-value --secret-id "${anthropic_secret}"    --query SecretString --output text 2>/dev/null || echo "")
+
+# Clone the private repo (token only ever lands in .env, chmod 600)
+git clone --branch ${repo_branch} "https://x-access-token:$${GH}@${repo_url}" /home/ubuntu/ua-palantir
+cd /home/ubuntu/ua-palantir
+
+# The slim warehouse lands where compose's `app` service mounts it read-only.
+# Wait for the operator's upload so a single apply works regardless of timing.
+mkdir -p de/dbt/ml_underground
+for i in $(seq 1 80); do
+  aws s3 cp "s3://${data_bucket}/ML_UNDERGROUND.duckdb" \
+    de/dbt/ml_underground/ML_UNDERGROUND.duckdb --only-show-errors && break
+  echo "waiting for ML_UNDERGROUND.duckdb in s3..."; sleep 15
+done
+
+cat > .env <<ENV
+ANTHROPIC_API_KEY=$${AN}
+RAG_MODEL=${rag_model}
+ENV
+chmod 600 .env
+chown -R ubuntu:ubuntu /home/ubuntu/ua-palantir
+
+# app (FastAPI + torch) + qdrant — two containers, no pipeline
+sudo -u ubuntu docker compose --profile app --profile ml up -d --build
+
+# Restore the embeddings: Qdrant pulls each snapshot straight from S3 via a
+# short-lived presigned URL (no upload size limit, nothing copied to the box).
+for i in $(seq 1 60); do curl -fsS http://localhost:6333/readyz >/dev/null 2>&1 && break; sleep 5; done
+for c in github_repos huggingface_models; do
+  if aws s3 ls "s3://${data_bucket}/$${c}.snapshot" >/dev/null 2>&1; then
+    URL=$(aws s3 presign "s3://${data_bucket}/$${c}.snapshot" --expires-in 3600)
+    curl -fsS -X PUT "http://localhost:6333/collections/$${c}/snapshots/recover" \
+      -H 'Content-Type: application/json' -d "{\"location\": \"$${URL}\"}" || true
+  fi
+done
+
+# Warm the embedder so the first visitor's /search isn't a cold model download
+for i in $(seq 1 60); do curl -fsS http://localhost:8000/api/v1/stats/summary >/dev/null 2>&1 && break; sleep 5; done
+curl -fsS "http://localhost:8000/api/v1/search?q=lora&limit=1" >/dev/null 2>&1 || true
+
+# TLS: Caddy terminates HTTPS (auto Let's Encrypt cert) on the configured
+# domain, or a free <public-ip>.sslip.io hostname when none is set, and
+# reverse-proxies to the app.
+%{ if domain != "" ~}
+SITE="${domain}"
+%{ else ~}
+TOKEN=$(curl -sX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+SITE="$(curl -s -H "X-aws-ec2-metadata-token: $${TOKEN}" http://169.254.169.254/latest/meta-data/public-ipv4).sslip.io"
+%{ endif ~}
+NET=$(docker network ls --format '{{.Name}}' | grep ml-underground | head -1)
+cat > /home/ubuntu/Caddyfile <<CADDY
+$${SITE} {
+    reverse_proxy app:8000
+}
+CADDY
+docker run -d --name caddy --restart unless-stopped \
+  --network "$${NET}" -p 80:80 -p 443:443 \
+  -v /home/ubuntu/Caddyfile:/etc/caddy/Caddyfile:ro \
+  -v caddy_data:/data -v caddy_config:/config caddy:2
+
+touch /home/ubuntu/SETUP_DONE
+echo "user-data finished ok"

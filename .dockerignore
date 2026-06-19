@@ -1,0 +1,14 @@
+.git
+.venv
+venv
+**/__pycache__
+*.pyc
+*.duckdb
+*.duckdb.wal
+node_modules
+de/dbt/**/target
+de/dbt/**/dbt_packages
+.claude
+*.log
+.env
+.DS_Store
