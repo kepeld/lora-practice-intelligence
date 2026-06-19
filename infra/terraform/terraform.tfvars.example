@@ -1,0 +1,7 @@
+# copy to terraform.tfvars and set your public IP. NO secrets here — those go into
+# AWS Secrets Manager via `aws secretsmanager put-secret-value` (see README).
+
+operator_cidr = "203.0.113.0/32" # your <public-ip>/32 — gates the Airflow/Grafana/Prometheus UIs
+
+# aws_region    = "eu-central-1"
+# instance_type = "t3.xlarge"        # drop to t3.large to save cost if the build fits in 8GB

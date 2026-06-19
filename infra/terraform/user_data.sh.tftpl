@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Bootstraps the instance with zero manual steps (NFR-3): Docker + the repo + secrets
+# (fetched from Secrets Manager, never baked here) + the full stack + an S3 publish cron.
+set -euo pipefail
+exec > /var/log/user-data.log 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y ca-certificates curl git jq unzip cron
+systemctl enable --now cron
+
+# AWS CLI v2
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscli.zip
+unzip -q /tmp/awscli.zip -d /tmp
+/tmp/aws/install
+export AWS_DEFAULT_REGION="${aws_region}"
+
+# Docker engine + compose plugin (official repo)
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable" \
+  > /etc/apt/sources.list.d/docker.list
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+usermod -aG docker ubuntu
+
+# Secrets — the instance role provides credentials via IMDS
+GH=$(aws secretsmanager get-secret-value --secret-id "${github_token_secret}" --query SecretString --output text)
+AN=$(aws secretsmanager get-secret-value --secret-id "${anthropic_secret}"    --query SecretString --output text 2>/dev/null || echo "")
+AF=$(aws secretsmanager get-secret-value --secret-id "${airflow_key_secret}"  --query SecretString --output text)
+
+# Clone the private repo (token only ever lands in .env, chmod 600)
+git clone --branch ${repo_branch} "https://x-access-token:$${GH}@${repo_url}" /home/ubuntu/ua-palantir
+cd /home/ubuntu/ua-palantir
+
+cat > .env <<ENV
+GITHUB_TOKEN=$${GH}
+ANTHROPIC_API_KEY=$${AN}
+ANTHROPIC_MODEL=${anthropic_model}
+AIRFLOW__WEBSERVER__SECRET_KEY=$${AF}
+ENV
+chmod 600 .env
+chown -R ubuntu:ubuntu /home/ubuntu/ua-palantir
+
+# Bring up the pipeline + monitoring (8 services). DAGs are paused-at-creation.
+sudo -u ubuntu docker compose --profile de --profile monitor up -d --build
+
+# init.sql creates only the base bronze tables; apply the migrations as a one-off
+# (github_files, lora_configs_raw, repo_lora_params, hf_models_lora_params, ...)
+for i in $(seq 1 48); do docker exec mysql mysqladmin ping -uroot -proot --silent 2>/dev/null && break; sleep 5; done
+for f in /home/ubuntu/ua-palantir/de/migrations/0*.sql; do docker exec -i mysql mysql -uroot -proot ml_underground < "$f" || true; done
+
+# Publish the DuckDB warehouse to S3 on a schedule so Dmytro can download it
+cat > /usr/local/bin/publish-duckdb.sh <<'PUB'
+#!/usr/bin/env bash
+F=/home/ubuntu/ua-palantir/de/dbt/ml_underground/ML_UNDERGROUND.duckdb
+[ -f "$F" ] && aws s3 cp "$F" "s3://${data_bucket}/data/ML_UNDERGROUND.duckdb" --only-show-errors
+PUB
+chmod +x /usr/local/bin/publish-duckdb.sh
+echo "*/${publish_interval_min} * * * * root AWS_DEFAULT_REGION=${aws_region} /usr/local/bin/publish-duckdb.sh" \
+  > /etc/cron.d/publish-duckdb
+chmod 644 /etc/cron.d/publish-duckdb
+
+touch /home/ubuntu/SETUP_DONE
+echo "user-data finished ok"
