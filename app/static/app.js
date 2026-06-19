@@ -187,6 +187,61 @@ async function runSearch() {
     : notice(esc(r.data?.detail || "search unavailable"), true);
 }
 
+/* Minimal markdown -> HTML for the RAG answer. esc() runs first on every text
+   segment, so only our own safe tags (h*, strong, code, a[http], ul/ol/li, p)
+   are ever introduced — no raw model output reaches innerHTML. */
+function mdToHtml(raw) {
+  const inline = (s) => esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+             '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const cells = (row) => row.replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+  const isRow = (s) => /^\|.*\|$/.test(s);
+  const isSep = (s) => /^\|[\s:|-]+\|$/.test(s);
+  const lines = String(raw || "").replace(/\r\n/g, "\n").split("\n");
+  const out = [];
+  let list = null, para = [];
+  const flushPara = () => {
+    if (para.length) { out.push("<p>" + para.map(inline).join("<br>") + "</p>"); para = []; }
+  };
+  const closeList = () => { if (list) { out.push("</" + list + ">"); list = null; } };
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    let m;
+    if (!t) { flushPara(); closeList(); }
+    else if (isRow(t) && i + 1 < lines.length && isSep(lines[i + 1].trim())) {
+      flushPara(); closeList();
+      out.push("<table><thead><tr>"
+        + cells(t).map((c) => "<th>" + inline(c) + "</th>").join("")
+        + "</tr></thead><tbody>");
+      i += 2;
+      while (i < lines.length && isRow(lines[i].trim())) {
+        out.push("<tr>"
+          + cells(lines[i].trim()).map((c) => "<td>" + inline(c) + "</td>").join("")
+          + "</tr>");
+        i++;
+      }
+      i--;
+      out.push("</tbody></table>");
+    } else if ((m = t.match(/^(#{1,6})\s+(.*)$/))) {
+      flushPara(); closeList();
+      const lvl = Math.min(m[1].length + 2, 6);
+      out.push(`<h${lvl}>${inline(m[2])}</h${lvl}>`);
+    } else if ((m = t.match(/^[-*]\s+(.*)$/))) {
+      flushPara();
+      if (list !== "ul") { closeList(); out.push("<ul>"); list = "ul"; }
+      out.push("<li>" + inline(m[1]) + "</li>");
+    } else if ((m = t.match(/^\d+\.\s+(.*)$/))) {
+      flushPara();
+      if (list !== "ol") { closeList(); out.push("<ol>"); list = "ol"; }
+      out.push("<li>" + inline(m[1]) + "</li>");
+    } else { closeList(); para.push(t); }
+  }
+  flushPara(); closeList();
+  return out.join("");
+}
+
 async function runAsk() {
   const q = $("#search-input").value.trim();
   if (!q) return;
@@ -197,7 +252,8 @@ async function runAsk() {
     return;
   }
   $("#search-out").innerHTML =
-    `<div class="answer"><div class="a-label">answer</div><p>${esc(r.data.answer)}</p></div>` +
+    `<div class="answer"><div class="a-label">answer</div>` +
+    `<div class="md">${mdToHtml(r.data.answer)}</div></div>` +
     `<div class="detail-sub">sources</div>` + renderHits(r.data.sources);
 }
 
