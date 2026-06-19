@@ -10,5 +10,6 @@ practices from GitHub and validates them against HuggingFace model outcomes
 | [Data model](data-model.md) | Bronze / Silver / Gold tables and the analytics logic (success score, four-quadrant practice stats, Variant D) |
 | [API contract](api-contract.md) | Proposed FastAPI surface for the frontend (endpoints + field shapes) |
 | [Test scenarios](test-scenarios.md) | Basic E2E/API/degraded-mode scenarios mapped to the automated suite |
+| [Presentation](presentation/) | Marp slide deck — source + diagrams/screenshots + built html/pdf/pptx (`build.sh`) |
 
 For local setup and service URLs, see the root [README](../README.md).

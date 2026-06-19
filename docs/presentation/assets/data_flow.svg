@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 330" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8A8073"/>
+    </marker>
+  </defs>
+
+  <!-- arrows -->
+  <g fill="none" stroke="#8A8073" stroke-width="2" marker-end="url(#ah)">
+    <path d="M170 99 L206 126"/>
+    <path d="M170 179 L206 172"/>
+    <path d="M360 149 L396 149"/>
+    <path d="M540 149 L576 149"/>
+    <path d="M750 149 L786 149"/>
+    <path d="M286 212 L396 250"/>
+    <path d="M540 262 L786 182"/>
+  </g>
+
+  <!-- sources -->
+  <g>
+    <rect x="20" y="70" width="150" height="58" rx="9" fill="#EAE5D8" stroke="#C9BFA8"/>
+    <text x="95" y="104" text-anchor="middle" font-size="18" fill="#26201A">GitHub</text>
+    <rect x="20" y="150" width="150" height="58" rx="9" fill="#EAE5D8" stroke="#C9BFA8"/>
+    <text x="95" y="184" text-anchor="middle" font-size="18" fill="#26201A">HuggingFace</text>
+  </g>
+
+  <!-- airflow -->
+  <rect x="210" y="86" width="150" height="126" rx="10" fill="#F4E2DA" stroke="#D8A48F"/>
+  <text x="285" y="140" text-anchor="middle" font-size="19" fill="#26201A" font-weight="600">Airflow</text>
+  <text x="285" y="165" text-anchor="middle" font-size="14" fill="#8C3A1D">3 DAG-и</text>
+
+  <!-- storage -->
+  <g>
+    <rect x="400" y="115" width="140" height="68" rx="10" fill="#E7EEE2" stroke="#A9C29F"/>
+    <text x="470" y="145" text-anchor="middle" font-size="18" fill="#26201A">MySQL</text>
+    <text x="470" y="167" text-anchor="middle" font-size="13" fill="#5A5043">bronze</text>
+
+    <rect x="580" y="115" width="170" height="68" rx="10" fill="#E7EEE2" stroke="#A9C29F"/>
+    <text x="665" y="145" text-anchor="middle" font-size="18" fill="#26201A">DuckDB</text>
+    <text x="665" y="167" text-anchor="middle" font-size="13" fill="#5A5043">silver &#8594; gold</text>
+
+    <rect x="400" y="232" width="140" height="60" rx="10" fill="#E7EEE2" stroke="#A9C29F"/>
+    <text x="470" y="258" text-anchor="middle" font-size="18" fill="#26201A">Qdrant</text>
+    <text x="470" y="278" text-anchor="middle" font-size="13" fill="#5A5043">вектори</text>
+  </g>
+
+  <!-- app -->
+  <rect x="790" y="115" width="185" height="68" rx="10" fill="#F3E8CB" stroke="#D8C074"/>
+  <text x="882" y="145" text-anchor="middle" font-size="18" fill="#26201A" font-weight="600">FastAPI</text>
+  <text x="882" y="167" text-anchor="middle" font-size="13" fill="#8C3A1D">+ дашборд</text>
+</svg>
