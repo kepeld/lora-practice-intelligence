@@ -3,7 +3,8 @@
 End-to-end, ML Underground collects LoRA training code from GitHub and LoRA
 models from HuggingFace, lands them in a MySQL bronze layer, promotes them
 through a DuckDB medallion (Bronze → Staging → Silver → Gold) with dbt, and
-exposes the resulting marts for analysis and a (planned) web dashboard.
+exposes the resulting marts through a FastAPI service and dashboard (deployed at
+ml-underground.xyz).
 
 ## Components
 
@@ -17,7 +18,7 @@ exposes the resulting marts for analysis and a (planned) web dashboard.
 | ML access | `ml/` (`data.py`, `scoring.py`, `practice_stats.py`, `rag/`) | DuckDB readers, pandas mirrors of the gold marts, RAG search + grounded answers |
 | Quality | Great Expectations | Bronze validation gate |
 | Monitoring | Prometheus + Grafana + custom exporter | Pipeline health |
-| Serving (planned) | FastAPI + dashboard | See [api-contract.md](api-contract.md) |
+| Serving | FastAPI + dashboard (`app/`) | The v1 API + dashboard; see [api-contract.md](api-contract.md) |
 
 ## Data flow
 
@@ -92,3 +93,13 @@ See [data-model.md](data-model.md) for the table-level detail.
   stored in the Qdrant payload — public-internet data, so it is length-capped,
   scrubbed of instruction-like patterns, and pinned inside
   `<retrieved_context>` delimiters as data-not-instructions (#52).
+
+## Deployment
+
+The full pipeline runs on AWS via Terraform (`infra/terraform`): EC2 for
+Airflow, Qdrant, the app and monitoring; RDS MySQL for bronze; S3; Secrets
+Manager. A lightweight serve-only public demo (dashboard + marts API,
+`app/Dockerfile.web`) is deployed on Render (`render.yaml`) at
+https://ml-underground.xyz; `infra/terraform-demo` is the AWS equivalent. The
+DuckDB warehouse ships as a file — a baked demo, or the real corpus fetched via
+`DUCKDB_URL`.
