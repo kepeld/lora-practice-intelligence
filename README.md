@@ -6,6 +6,8 @@ fine-tune fan-out). The goal: surface "rare-but-works" LoRA techniques —
 hyperparameter recipes, training tricks, dataset patterns — before they
 spread.
 
+**Live demo:** https://ml-underground.xyz — see the [overview](docs/overview.md).
+
 ## How it works
 
 ```
@@ -47,12 +49,16 @@ ua-palantir/
 ├── app/                                 # FastAPI v1 API + dashboard (app/static)
 │   ├── api.py                           # /api/v1 endpoints over the DuckDB marts
 │   ├── demo_seed.py                     # Small demo warehouse for local dev/tests
+│   ├── Dockerfile.web                   # Marts-only image for the public demo
 │   └── static/                          # No-build dashboard (HTML/CSS/JS)
 ├── infra/
 │   ├── exporter/                        # Custom Prometheus exporter
 │   ├── grafana/                         # Auto-provisioned dashboards
+│   ├── terraform/                       # AWS IaC — full pipeline stack
+│   ├── terraform-demo/                  # AWS IaC — serve-only public demo
 │   └── prometheus.yml
 ├── docker-compose.yml                   # Local stack (profiles: de, app, monitor, all)
+├── render.yaml                          # Render blueprint for the public demo
 └── README.md
 ```
 
@@ -112,6 +118,15 @@ uv pip install -r requirements-dev.txt
 python -m app.demo_seed        # only if the pipeline hasn't built a warehouse yet
 uvicorn app.main:app --port 8000
 ```
+
+## Deployment
+
+- **Public demo** — `app/Dockerfile.web` (marts-only: no Qdrant / LLM, so
+  `/search` and `/ask` degrade to 503) on Render via `render.yaml`, live at
+  **https://ml-underground.xyz**.
+- **AWS** — `infra/terraform` provisions the full pipeline (EC2 for Airflow /
+  Qdrant / app / monitoring, RDS MySQL, S3, Secrets Manager); `infra/terraform-demo`
+  is the serve-only variant. See `infra/terraform/README.md`.
 
 ## Pipelines
 
