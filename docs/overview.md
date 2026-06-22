@@ -42,6 +42,21 @@ size, so a "hidden gem" reflects a real effect rather than one lucky model.
   the full vector + LLM backend, so they are limited on the lightweight public
   demo and fully available in the complete deployment.
 
+## Sample search queries
+
+Try these in **Search the corpus** on the dashboard:
+
+1. 8-bit adamw optimizer for qlora
+2. qlora 4-bit quantization low vram
+3. fine-tune llama 3 on medical data
+4. lora rank and alpha selection
+5. unsloth fast fine-tuning
+6. axolotl training config
+7. instruction tuning with dpo alignment
+8. code generation model fine-tuning
+9. merge lora adapter into base model
+10. multilingual adapter for ukrainian
+
 ## More
 
 Architecture, data model, the API contract, and test scenarios live alongside
